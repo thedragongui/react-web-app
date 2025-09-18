@@ -5,7 +5,7 @@ import './sidebar.css';
 
 const navItems = [
   { to: '/', label: 'Tableau de bord', end: true },
-  { to: '/personnalisation', label: 'Personnalisation' },
+  { to: '/configuration', label: 'Configuration' },
   { to: '/programme', label: 'Programme' },
   { to: '/sponsors', label: 'Sponsors' },
   { to: '/participants', label: 'Participants' },

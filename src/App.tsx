@@ -5,7 +5,6 @@ import SignIn from './pages/SignIn';
 import Dashboard from './pages/Dashboard';
 
 import AppShell from './layout/AppShell';
-import Personalisation from './pages/Personalisation';
 import ProgrammePage from './pages/ProgrammePage';
 import SponsorsPage from './pages/SponsorsPage';
 import ParticipantsPage from './pages/ParticipantsPage';
@@ -17,6 +16,7 @@ import ProfilePage from './pages/ProfilePage';
 // (option) tes pages de démo, accessibles mais pas dans la sidebar
 import FirestoreDemo from './pages/FirestoreDemo';
 import StorageDemo from './pages/StorageDemo';
+import ConfigApp from './pages/ConfigApp';
 
 export default function App() {
   return (
@@ -36,7 +36,7 @@ export default function App() {
             }
           >
             <Route index element={<Dashboard />} />
-            <Route path="personnalisation" element={<Personalisation />} />
+            <Route path="configuration" element={<ConfigApp />} />
             <Route path="programme" element={<ProgrammePage />} />
             <Route path="sponsors" element={<SponsorsPage />} />
             <Route path="participants" element={<ParticipantsPage />} />

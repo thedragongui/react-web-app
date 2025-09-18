@@ -424,3 +424,41 @@ export function watchCongres(
   );
 }
 
+// ========= APP CONFIG =========
+export type AppIdentity = {
+  primaryColor?: string; secondaryColor?: string;
+  backgroundColor?: string; textColor?: string;
+  logoUrl?: string; logoPath?: string;
+  updatedAt?: any;
+};
+export type AppStoreInfo = {
+  appName: string;
+  shortDescription?: string;
+  longDescription?: string;
+  bannerUrl?: string; bannerPath?: string;
+  splashUrl?: string;  splashPath?: string;
+  updatedAt?: any;
+};
+export type AppConfig = { identity?: AppIdentity; store?: AppStoreInfo; updatedAt?: any };
+
+const appConfigDoc = (congresId: string) =>
+  doc(db, 'congres', congresId, 'appConfig', 'config') as DocumentReference<AppConfig>;
+
+export async function getAppConfig(congresId: string): Promise<AppConfig | null> {
+  const s = await getDoc(appConfigDoc(congresId));
+  return s.exists() ? (s.data() as AppConfig) : null;
+}
+export function watchAppConfig(
+  congresId: string,
+  cb: (cfg: AppConfig | null) => void,
+  onError?: (e: any) => void
+) {
+  if (!congresId) { cb(null); return () => {}; }
+  return onSnapshot(appConfigDoc(congresId),
+    (snap) => cb(snap.exists() ? (snap.data() as AppConfig) : null),
+    (err) => onError?.(err)
+  );
+}
+export async function saveAppConfig(congresId: string, patch: Partial<AppConfig>) {
+  await setDoc(appConfigDoc(congresId), { ...patch, updatedAt: serverTimestamp() }, { merge: true });
+}
