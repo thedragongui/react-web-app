@@ -1,0 +1,35 @@
+.ppage { display: grid; gap: 16px; }
+
+.ppage-toolbar {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+}
+.ppage-toolbar input, .ppage-toolbar select {
+  padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff;
+}
+.search { min-width: 260px; }
+.chk { display: flex; gap: 6px; align-items: center; }
+.sep { width: 1px; height: 28px; background: #e5e7eb; }
+.spacer { flex: 1; }
+.count { color: #6b7280; font-size: 13px; }
+
+.ptable {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+  overflow: hidden;
+}
+.thead, .tr {
+  display: grid;
+  grid-template-columns: 90px 1.2fr 1.4fr 1fr 0.9fr 80px 80px;
+  gap: 8px; align-items: center;
+}
+.thead { background: #f9fafb; padding: 10px 12px; border-bottom: 1px solid #e5e7eb; font-weight: 600; color: #374151; }
+.tloading, .tempty { padding: 12px; color: #6b7280; }
+.tbody .tr { padding: 10px 12px; border-top: 1px solid #f3f4f6; }
+
+.td.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.muted { color: #9ca3af; }
+
+.pager {
+  display: flex; gap: 10px; align-items: center; justify-content: center;
+}
+.btn-ghost { padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: transparent; cursor: pointer; }
+.page-indicator { color: #6b7280; font-size: 13px; }

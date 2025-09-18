@@ -1,0 +1,39 @@
+.lpage { display: grid; gap: 16px; }
+
+.ltoolbar { display: flex; gap: 10px; align-items: center; }
+.search { min-width: 260px; padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
+.ltoolbar select { padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
+.spacer { flex: 1; }
+
+.llist { display: grid; gap: 10px; }
+.litem {
+  display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px;
+}
+.lmain { display: grid; gap: 4px; }
+.ltitle { font-weight: 600; }
+.lurl { color: #2563eb; word-break: break-all; }
+.lmeta { color: #6b7280; font-size: 13px; display: flex; gap: 8px; align-items: center; }
+.lcat { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 999px; padding: 2px 8px; }
+.lbubble { background: #eef2ff; border: 1px solid #e0e7ff; border-radius: 999px; padding: 2px 8px; font-size: 12px; }
+
+.btn-primary { padding: 10px 12px; border: none; border-radius: 8px; background: #111827; color: #fff; cursor: pointer; }
+.btn-ghost { padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: transparent; cursor: pointer; }
+.btn-ghost.sm { padding: 4px 6px; }
+.btn-ghost.sm.danger { color: #b91c1c; }
+.btn-danger { padding: 10px 12px; border: none; border-radius: 8px; background: #b91c1c; color: #fff; cursor: pointer; }
+
+.empty-state { padding: 16px; border: 1px dashed #d1d5db; color: #6b7280; border-radius: 12px; background: #fff; }
+
+/* Modale (réutilise les styles déjà introduits plus tôt) */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.3); display: grid; place-items: center; z-index: 50; }
+.modal { width: 640px; max-width: calc(100% - 24px); background: #fff; border-radius: 12px; border: 1px solid #e5e7eb; box-shadow: 0 10px 30px rgba(0,0,0,.15); }
+.modal.small { width: 520px; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #f3f4f6; }
+.form { padding: 16px; display: grid; gap: 12px; }
+.field { display: grid; gap: 6px; }
+.field input, .field textarea, .field select { padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
+.grid-2 { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+.field.chk { display: flex; align-items: center; gap: 8px; }
+.actions { display: flex; gap: 8px; justify-content: flex-end; }
+.error { color: #b91c1c; background: #fee2e2; border: 1px solid #fecaca; padding: 8px 10px; border-radius: 8px; }

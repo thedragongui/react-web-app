@@ -1,0 +1,7 @@
+.app-shell { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; background: #f6f7f9; }
+.app-main { display: flex; flex-direction: column; min-width: 0; }
+.app-header { height: 64px; display: flex; align-items: center; padding: 0 24px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+.app-header h1 { font-size: 20px; margin: 0; }
+.app-content { padding: 20px 24px 40px; }
+.app-header { justify-content: space-between; }
+.app-brand { font-weight: 600; opacity: .9; }
