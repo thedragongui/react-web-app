@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ref, listAll, getDownloadURL, uploadBytes, getMetadata } from 'firebase/storage';
+import type { StorageReference } from 'firebase/storage';
 import { storage } from '../firebase';
 import { useAuth } from '../auth/AuthContext';
 import './importation-pdf.css';
@@ -10,12 +11,100 @@ type PdfItem = {
   url: string | null;
   timeCreated: string | null; // ISO
   size: number | null;
+  folder: string;
 };
 
 const DEFAULT_CONGRES_ID = 'Fragilite_2025'; // adapte si besoin
+const STORAGE_ROOT_FALLBACKS = [
+  'abstracts',
+  'badges',
+  'imgIntervenants',
+  'imgSponsors',
+  'plan',
+  'programme',
+  'qrcodes',
+  'qrcodesCarteDeVisite',
+] as const;
 
 function sanitizeFileName(name: string) {
   return name.replace(/[^\w.\-]/g, '_');
+}
+
+function formatError(err: unknown): string {
+  if (err && typeof err === 'object' && 'message' in err) {
+    const message = (err as { message?: string }).message;
+    return message ?? 'Erreur inconnue.';
+  }
+  if (typeof err === 'string') return err;
+  try {
+    return JSON.stringify(err);
+  } catch (stringifyError) {
+    return String(stringifyError);
+  }
+}
+
+// Recursively collect every PDF stored anywhere in the bucket starting from the provided ref.
+async function collectAllPdfs(baseRef: StorageReference): Promise<PdfItem[]> {
+  const listing = await listAll(baseRef);
+  const currentLevel = await Promise.all(
+    listing.items
+      .filter((itemRef) => itemRef.name.toLowerCase().endsWith('.pdf'))
+      .map(async (itemRef) => {
+        const [meta, url] = await Promise.allSettled([
+          getMetadata(itemRef),
+          getDownloadURL(itemRef),
+        ]);
+        const folder = itemRef.fullPath.includes('/')
+          ? itemRef.fullPath.slice(0, itemRef.fullPath.lastIndexOf('/'))
+          : '';
+        return {
+          name: itemRef.name,
+          path: itemRef.fullPath,
+          url: url.status === 'fulfilled' ? url.value : null,
+          timeCreated: meta.status === 'fulfilled' ? meta.value.timeCreated ?? null : null,
+          size: meta.status === 'fulfilled' ? meta.value.size ?? null : null,
+          folder,
+        } as PdfItem;
+      })
+  );
+
+  if (listing.prefixes.length === 0) {
+    return currentLevel;
+  }
+
+  const nestedLevels = await Promise.all(listing.prefixes.map((prefix) => collectAllPdfs(prefix)));
+  return currentLevel.concat(...nestedLevels);
+}
+
+function sortPdfs(rows: PdfItem[]) {
+  rows.sort((a, b) => {
+    if (a.timeCreated && b.timeCreated) return b.timeCreated.localeCompare(a.timeCreated);
+    return b.name.localeCompare(a.name);
+  });
+  return rows;
+}
+
+async function gatherPdfsFrom(refs: StorageReference[]): Promise<{ rows: PdfItem[]; errors: string[] }> {
+  const map = new Map<string, PdfItem>();
+  const errors: string[] = [];
+
+  await Promise.all(
+    refs.map(async (entry) => {
+      try {
+        const rows = await collectAllPdfs(entry);
+        rows.forEach((item) => {
+          map.set(item.path, item);
+        });
+      } catch (err) {
+        errors.push(formatError(err));
+      }
+    })
+  );
+
+  return {
+    rows: sortPdfs(Array.from(map.values())),
+    errors,
+  };
 }
 
 export default function ImportationPdfPage() {
@@ -25,34 +114,33 @@ export default function ImportationPdfPage() {
   const [items, setItems] = useState<PdfItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
-  const [filterMine, setFilterMine] = useState(true); // filtrer par congrèsId dans le nom
+  const [error, setError] = useState<string | null>(null);
 
-  // Liste les fichiers du dossier programme/
   async function refreshList() {
     setLoading(true);
     try {
-      const baseRef = ref(storage, 'programme');
-      const res = await listAll(baseRef);
-      const rows = await Promise.all(
-        res.items.map(async (itemRef) => {
-          const [meta, url] = await Promise.allSettled([getMetadata(itemRef), getDownloadURL(itemRef)]);
-          return {
-            name: itemRef.name,
-            path: itemRef.fullPath,
-            url: url.status === 'fulfilled' ? url.value : null,
-            timeCreated: meta.status === 'fulfilled' ? meta.value.timeCreated ?? null : null,
-            size: meta.status === 'fulfilled' ? meta.value.size ?? null : null,
-          } as PdfItem;
-        })
-      );
+      const rootRes = await gatherPdfsFrom([ref(storage)]);
+      if (rootRes.rows.length > 0) {
+        setItems(rootRes.rows);
+        setError(rootRes.errors[0] ?? null);
+        return;
+      }
 
-      // Trie par date de création (desc) ; fallback au tri alphabétique si pas de timeCreated
-      rows.sort((a, b) => {
-        if (a.timeCreated && b.timeCreated) return b.timeCreated.localeCompare(a.timeCreated);
-        return b.name.localeCompare(a.name);
-      });
+      if (STORAGE_ROOT_FALLBACKS.length > 0) {
+        const fallbackRefs = STORAGE_ROOT_FALLBACKS.map((folder) => ref(storage, folder));
+        const fallbackRes = await gatherPdfsFrom(fallbackRefs);
+        setItems(fallbackRes.rows);
+        const message = rootRes.errors[0] ?? fallbackRes.errors[0] ?? null;
+        setError(message);
+        return;
+      }
 
-      setItems(rows);
+      setItems([]);
+      setError(rootRes.errors[0] ?? null);
+    } catch (err) {
+      console.error('Erreur lors du rafraîchissement de la liste des PDFs', err);
+      setItems([]);
+      setError(formatError(err));
     } finally {
       setLoading(false);
     }
@@ -62,17 +150,8 @@ export default function ImportationPdfPage() {
     refreshList();
   }, []);
 
-  // Filtrer par congrès si le nom contient _{congresId}_
-  const filtered = useMemo(() => {
-    if (!filterMine) return items;
-    const key = `_${congresId}_`;
-    const altKey = `${congresId}_`; // tolérance si pas d’underscore initial
-    return items.filter(i => i.name.includes(key) || i.name.includes(altKey));
-  }, [items, filterMine, congresId]);
+  const latest = items[0] ?? null;
 
-  const latest = filtered[0] ?? null;
-
-  // Upload (admin only)
   async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -84,15 +163,14 @@ export default function ImportationPdfPage() {
       setUploadMsg('Veuillez sélectionner un fichier PDF.');
       return;
     }
-    setUploadMsg('Téléversement en cours…');
+    setUploadMsg('Téléversement en cours.');
 
     try {
-      // Convention de nommage : {timestamp}_{congresId}_{nomSanitise}.pdf
       const ts = Date.now();
       const newName = `${ts}_${congresId}_${sanitizeFileName(file.name)}`;
       const destRef = ref(storage, `programme/${newName}`);
       await uploadBytes(destRef, file);
-      setUploadMsg('Téléversement terminé ✅');
+      setUploadMsg('Téléversement terminé ?');
       await refreshList();
     } catch (err: any) {
       setUploadMsg(err?.message ?? String(err));
@@ -106,10 +184,6 @@ export default function ImportationPdfPage() {
           <label>
             Congrès ID&nbsp;
             <input value={congresId} onChange={e => setCongresId(e.target.value)} />
-          </label>
-          <label className="chk">
-            <input type="checkbox" checked={filterMine} onChange={e => setFilterMine(e.target.checked)} />
-            Afficher seulement les PDFs contenant l’ID du congrès
           </label>
         </div>
         <div className="right">
@@ -127,16 +201,19 @@ export default function ImportationPdfPage() {
         </div>
       </div>
 
-      {loading && <div className="placeholder">Chargement des fichiers…</div>}
+      {error && <div className="hint">{`Attention : ${error}`}</div>}
+
+      {loading && <div className="placeholder">Chargement des fichiers.</div>}
 
       {!loading && latest && (
         <div className="latest-card">
           <div>
             <div className="latest-title">Dernier PDF</div>
             <div className="latest-name">{latest.name}</div>
+            <div className="latest-path">{latest.path}</div>
             <div className="latest-meta">
               {latest.timeCreated ? new Date(latest.timeCreated).toLocaleString('fr-FR') : 'Date inconnue'}
-              {typeof latest.size === 'number' ? ` • ${(latest.size / 1024).toFixed(0)} Ko` : ''}
+              {typeof latest.size === 'number' ? ` | ${(latest.size / 1024).toFixed(0)} Ko` : ''}
             </div>
           </div>
           <div>
@@ -149,19 +226,20 @@ export default function ImportationPdfPage() {
         </div>
       )}
 
-      {!loading && filtered.length === 0 && (
-        <div className="empty-state">Aucun PDF trouvé {filterMine ? `pour “${congresId}”` : ''}.</div>
+      {!loading && items.length === 0 && (
+        <div className="empty-state">Aucun PDF trouvé.</div>
       )}
 
-      {!loading && filtered.length > 0 && (
+      {!loading && items.length > 0 && (
         <div className="list">
-          {filtered.map((it) => (
+          {items.map((it) => (
             <div key={it.path} className="row">
               <div className="row-main">
                 <div className="file-name">{it.name}</div>
+                <div className="file-path">{it.path}</div>
                 <div className="file-meta">
-                  {it.timeCreated ? new Date(it.timeCreated).toLocaleString('fr-FR') : '—'}
-                  {typeof it.size === 'number' ? ` • ${(it.size / 1024).toFixed(0)} Ko` : ''}
+                  {it.timeCreated ? new Date(it.timeCreated).toLocaleString('fr-FR') : '-'}
+                  {typeof it.size === 'number' ? ` | ${(it.size / 1024).toFixed(0)} Ko` : ''}
                 </div>
               </div>
               <div className="row-actions">
