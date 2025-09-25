@@ -1,31 +1,284 @@
-.perso { display: grid; gap: 16px; }
-.toolbar { display: flex; gap: 12px; align-items: center; }
-.toolbar input { padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
-.spacer { flex: 1; }
-
-.grid { display: grid; gap: 16px; grid-template-columns: 1.3fr 1fr; }
-@media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
-
-.card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px; display: grid; gap: 12px; }
-.form .field { display: grid; gap: 6px; }
-.form input, .form textarea { padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
-.row { display: flex; gap: 8px; align-items: center; }
-
-.chips { display: flex; gap: 8px; flex-wrap: wrap; }
-.chip { display: inline-flex; gap: 6px; align-items: center; padding: 6px 10px; border: 1px solid #e5e7eb; border-radius: 999px; font-size: 13px; cursor: pointer; }
-.chip.active { background: #111827; color: #fff; border-color: #111827; }
-.chip input { display: none; }
-
-.btn-primary { padding: 10px 12px; border: none; border-radius: 8px; background: #111827; color: #fff; cursor: pointer; }
-.btn-ghost { padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: transparent; cursor: pointer; }
-.hint { color: #6b7280; font-size: 13px; }
-.alert.error { color: #b91c1c; background: #fee2e2; border: 1px solid #fecaca; padding: 8px 10px; border-radius: 8px; }
-
-/* Preview */
-.preview .app-preview {
-  border: 1px dashed #d1d5db; border-radius: 12px; padding: 16px; color: #fff;
+.config-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
-.preview .app-title { font-weight: 700; font-size: 20px; }
-.preview .app-desc { opacity: .9; margin-top: 4px; }
-.preview .app-cards { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; margin-top: 12px; }
-.preview .app-card { background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2); border-radius: 10px; padding: 10px; text-transform: capitalize; text-align: center; }
+
+.config-header {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.config-header h1 {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 700;
+}
+
+.config-stepper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.config-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color: #111827;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background .2s, border-color .2s, color .2s;
+}
+
+.config-step .step-index {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f4f6;
+  font-weight: 600;
+}
+
+.config-step.active {
+  background: #111827;
+  border-color: #111827;
+  color: #fff;
+}
+
+.config-step.active .step-index {
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+}
+
+.config-message {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.config-error {
+  color: #b91c1c;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  padding: 12px 16px;
+  border-radius: 12px;
+}
+
+.config-body {
+  display: grid;
+  gap: 24px;
+}
+
+.config-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 28px;
+  display: grid;
+  gap: 24px;
+}
+
+.config-card h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.upload-grid {
+  display: grid;
+  gap: 20px;
+}
+
+@media (min-width: 900px) {
+  .upload-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.upload-tile {
+  display: grid;
+  gap: 12px;
+  border: 1px dashed #d1d5db;
+  border-radius: 14px;
+  background: #f9fafb;
+  padding: 20px;
+}
+
+.config-section-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.config-section-title strong {
+  font-size: 15px;
+}
+
+.upload-meta {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.upload-preview {
+  width: 100%;
+  height: 140px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.upload-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.upload-drop {
+  border: 1px dashed #d1d5db;
+  border-radius: 12px;
+  background: #fff;
+  padding: 32px 16px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 14px;
+  display: grid;
+  gap: 8px;
+  cursor: pointer;
+  transition: border-color .2s, color .2s, background .2s;
+}
+
+.upload-drop:hover {
+  border-color: #111827;
+  color: #111827;
+  background: #f3f4f6;
+}
+
+.color-grid {
+  display: grid;
+  gap: 18px;
+}
+
+@media (min-width: 720px) {
+  .color-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.field-group {
+  display: grid;
+  gap: 6px;
+}
+
+.field-group label {
+  font-weight: 500;
+}
+
+.field-group input,
+.field-group textarea {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.color-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.color-input input[type="color"] {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  padding: 0;
+  background: #fff;
+}
+
+.config-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.store-form {
+  display: grid;
+  gap: 20px;
+}
+
+.store-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.features-placeholder {
+  min-height: 220px;
+  border-radius: 16px;
+  border: 1px dashed #d1d5db;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.btn-primary,
+.btn-outline,
+.btn-next {
+  border-radius: 10px;
+  padding: 12px 18px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-primary {
+  border: none;
+  background: #111827;
+  color: #fff;
+}
+
+.btn-outline {
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color: #111827;
+}
+
+.btn-next {
+  border: none;
+  background: #111827;
+  color: #fff;
+}
+
+.hint {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+@media (max-width: 600px) {
+  .config-step {
+    width: 100%;
+  }
+
+  .config-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+

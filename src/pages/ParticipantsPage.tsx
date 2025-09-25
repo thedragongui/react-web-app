@@ -1,10 +1,10 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
 import { watchParticipants, type Participant } from '../firestore/firestoreApi';
 import './participants.css';
+import { DEFAULT_CONGRES_ID } from '../lib/congresId';
 
 type Row = Participant & { idDoc: string };
 
-const DEFAULT_CONGRES_ID = 'Fragilite_2025'; // adapte si besoin
 const PAGE_SIZE = 25;
 
 //
@@ -80,7 +80,7 @@ export default function ParticipantsPage() {
     if (debouncedQ) {
       data = data.filter(r => {
         const hay =
-          `${displayName(r)} ${r.email ?? ''} ${r.compagnie ?? ''} ${r.id ?? ''}`
+          `${displayName(r)} ${r.email ?? ''} ${r.compagnie ?? ''} ${r.pays ?? ''} ${r.id ?? ''}`
             .toLowerCase();
         return hay.includes(debouncedQ);
       });
@@ -98,7 +98,7 @@ export default function ParticipantsPage() {
     <div className="ppage">
       <div className="ppage-toolbar">
         <label>
-          Congrès ID&nbsp;
+          Congres ID
           <input value={congresId} onChange={(e) => setCongresId(e.target.value)} />
         </label>
 
@@ -106,13 +106,13 @@ export default function ParticipantsPage() {
 
         <input
           className="search"
-          placeholder="Rechercher (nom, email, compagnie, id)…"
+          placeholder="Rechercher (nom, email, compagnie, pays, id)."
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
 
         <select value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option value="ALL">Toutes catégories</option>
+          <option value="ALL">Toutes categories</option>
           {categories.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
 
@@ -123,13 +123,13 @@ export default function ParticipantsPage() {
 
         <label className="chk">
           <input type="checkbox" checked={onlyScanned} onChange={e => setOnlyScanned(e.target.checked)} />
-          Déjà scannés
+          Deja scannes
         </label>
 
         <div className="spacer" />
 
         <div className="count">
-          {loading ? 'Chargement…' : `${total} résultat${total > 1 ? 's' : ''}`}
+          {loading ? 'Chargement...' : `${total} resultat${total > 1 ? 's' : ''}`}
         </div>
       </div>
 
@@ -139,15 +139,16 @@ export default function ParticipantsPage() {
           <div className="th name">Nom</div>
           <div className="th email">Email</div>
           <div className="th comp">Compagnie</div>
-          <div className="th cat">Catégorie</div>
+          <div className="th country">Pays</div>
+          <div className="th cat">Categorie</div>
           <div className="th flag">Admin</div>
-          <div className="th flag">Scanné</div>
+          <div className="th flag">Scanne</div>
         </div>
 
-        {loading && <div className="tloading">Chargement des participants…</div>}
+        {loading && <div className="tloading">Chargement des participants...</div>}
 
         {!loading && current.length === 0 && (
-          <div className="tempty">Aucun participant trouvé.</div>
+          <div className="tempty">Aucun participant trouve.</div>
         )}
 
         {!loading && current.length > 0 && (
@@ -159,10 +160,11 @@ export default function ParticipantsPage() {
                 <div className="td email">
                   {r.email ? (
                     <a href={`mailto:${r.email}`} title="Envoyer un email">{r.email}</a>
-                  ) : <span className="muted">—</span>}
+                  ) : <span className="muted">-</span>}
                 </div>
-                <div className="td comp">{r.compagnie ?? <span className="muted">—</span>}</div>
-                <div className="td cat">{r.category ?? <span className="muted">—</span>}</div>
+                <div className="td comp">{r.compagnie ?? <span className="muted">-</span>}</div>
+                <div className="td country">{r.pays ?? <span className="muted">-</span>}</div>
+                <div className="td cat">{r.category ?? <span className="muted">-</span>}</div>
                 <div className="td flag">{r.isAdmin ? 'Oui' : 'Non'}</div>
                 <div className="td flag">{r.alreadyScanned ? 'Oui' : 'Non'}</div>
               </div>
@@ -177,7 +179,7 @@ export default function ParticipantsPage() {
           disabled={pageSafe <= 1}
           onClick={() => setPage(p => Math.max(1, p - 1))}
         >
-          ← Précédent
+          &lt; Precedent
         </button>
         <div className="page-indicator">
           Page {pageSafe} / {pages}
@@ -187,9 +189,10 @@ export default function ParticipantsPage() {
           disabled={pageSafe >= pages}
           onClick={() => setPage(p => Math.min(pages, p + 1))}
         >
-          Suivant →
+          Suivant &gt;
         </button>
       </div>
     </div>
   );
 }
+

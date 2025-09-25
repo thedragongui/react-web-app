@@ -6,6 +6,7 @@ import {
 } from '../firestore/firestoreApi';
 import { storage } from '../firebase';
 import { ref, listAll, getMetadata, getDownloadURL } from 'firebase/storage';
+import { DEFAULT_CONGRES_ID } from '../lib/congresId';
 import './dashboard.css';
 
 type ProgrammeStats = {
@@ -13,7 +14,6 @@ type ProgrammeStats = {
   latest?: { name: string; url: string | null; timeCreated: string | null } | null;
 };
 
-const DEFAULT_CONGRES_ID = 'Fragilite_2025'; // adapte si besoin
 
 export default function Dashboard() {
   const { user } = useAuth();

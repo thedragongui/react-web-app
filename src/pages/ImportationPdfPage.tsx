@@ -1,20 +1,37 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ref, listAll, getDownloadURL, uploadBytes, getMetadata } from 'firebase/storage';
 import type { StorageReference } from 'firebase/storage';
 import { storage } from '../firebase';
 import { useAuth } from '../auth/AuthContext';
+import { DEFAULT_CONGRES_ID } from '../lib/congresId';
 import './importation-pdf.css';
 
 type PdfItem = {
   name: string;
   path: string;
   url: string | null;
-  timeCreated: string | null; // ISO
+  timeCreated: string | null;
   size: number | null;
   folder: string;
 };
 
-const DEFAULT_CONGRES_ID = 'Fragilite_2025'; // adapte si besoin
+type SectionId = 'posters' | 'expo-plan' | 'spaces-plan' | 'infos' | 'abstracts';
+
+type Section = {
+  id: SectionId;
+  label: string;
+  hint: string;
+  match?: (item: PdfItem) => boolean;
+};
+
+const SECTIONS: Section[] = [
+  { id: 'posters', label: 'Posters', hint: 'programme/', match: (item) => item.path.toLowerCase().includes('programme/') },
+  { id: 'expo-plan', label: "Plan d'exposition", hint: 'plan/', match: (item) => item.path.toLowerCase().includes('plan/') },
+  { id: 'spaces-plan', label: 'Plan des espaces', hint: 'spaces', match: (item) => item.path.toLowerCase().includes('space') },
+  { id: 'infos', label: 'Informations generales', hint: 'infos', match: (item) => item.path.toLowerCase().includes('info') },
+  { id: 'abstracts', label: 'Livret des abstracts', hint: 'abstract', match: (item) => item.path.toLowerCase().includes('abstract') },
+];
+
 const STORAGE_ROOT_FALLBACKS = [
   'abstracts',
   'badges',
@@ -38,12 +55,11 @@ function formatError(err: unknown): string {
   if (typeof err === 'string') return err;
   try {
     return JSON.stringify(err);
-  } catch (stringifyError) {
-    return String(stringifyError);
+  } catch (error) {
+    return String(error);
   }
 }
 
-// Recursively collect every PDF stored anywhere in the bucket starting from the provided ref.
 async function collectAllPdfs(baseRef: StorageReference): Promise<PdfItem[]> {
   const listing = await listAll(baseRef);
   const currentLevel = await Promise.all(
@@ -95,8 +111,8 @@ async function gatherPdfsFrom(refs: StorageReference[]): Promise<{ rows: PdfItem
         rows.forEach((item) => {
           map.set(item.path, item);
         });
-      } catch (err) {
-        errors.push(formatError(err));
+      } catch (error) {
+        errors.push(formatError(error));
       }
     })
   );
@@ -112,6 +128,8 @@ export default function ImportationPdfPage() {
   const [congresId, setCongresId] = useState(DEFAULT_CONGRES_ID);
 
   const [items, setItems] = useState<PdfItem[]>([]);
+  const [selected, setSelected] = useState<PdfItem | null>(null);
+  const [section, setSection] = useState<SectionId>('posters');
   const [loading, setLoading] = useState(true);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -123,6 +141,7 @@ export default function ImportationPdfPage() {
       if (rootRes.rows.length > 0) {
         setItems(rootRes.rows);
         setError(rootRes.errors[0] ?? null);
+        setLoading(false);
         return;
       }
 
@@ -130,15 +149,15 @@ export default function ImportationPdfPage() {
         const fallbackRefs = STORAGE_ROOT_FALLBACKS.map((folder) => ref(storage, folder));
         const fallbackRes = await gatherPdfsFrom(fallbackRefs);
         setItems(fallbackRes.rows);
-        const message = rootRes.errors[0] ?? fallbackRes.errors[0] ?? null;
-        setError(message);
+        setError(rootRes.errors[0] ?? fallbackRes.errors[0] ?? null);
+        setLoading(false);
         return;
       }
 
       setItems([]);
       setError(rootRes.errors[0] ?? null);
     } catch (err) {
-      console.error('Erreur lors du rafraîchissement de la liste des PDFs', err);
+      console.error('Erreur lors du rafraichissement des PDFs', err);
       setItems([]);
       setError(formatError(err));
     } finally {
@@ -150,27 +169,45 @@ export default function ImportationPdfPage() {
     refreshList();
   }, []);
 
-  const latest = items[0] ?? null;
+  const filteredItems = useMemo(() => {
+    const def = SECTIONS.find((sectionDef) => sectionDef.id === section);
+    if (!def?.match) return items;
+    const subset = items.filter((item) => def.match?.(item));
+    return subset.length > 0 ? subset : items;
+  }, [items, section]);
 
-  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+  useEffect(() => {
+    if (filteredItems.length === 0) {
+      setSelected(null);
+      return;
+    }
+    setSelected((prev) => {
+      if (prev && filteredItems.some((item) => item.path === prev.path)) {
+        return prev;
+      }
+      return filteredItems[0];
+    });
+  }, [filteredItems]);
+
+  async function onPickFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
     if (!file) return;
     if (!isAdmin) {
-      setUploadMsg("Droits insuffisants : seul un administrateur peut téléverser le programme.");
+      setUploadMsg('Upload reserve aux administrateurs.');
       return;
     }
     if (file.type !== 'application/pdf') {
-      setUploadMsg('Veuillez sélectionner un fichier PDF.');
+      setUploadMsg('Veuillez selectionner un fichier PDF.');
       return;
     }
-    setUploadMsg('Téléversement en cours.');
+    setUploadMsg('Televersement en cours...');
 
     try {
       const ts = Date.now();
       const newName = `${ts}_${congresId}_${sanitizeFileName(file.name)}`;
-      const destRef = ref(storage, `programme/${newName}`);
-      await uploadBytes(destRef, file);
-      setUploadMsg('Téléversement terminé ?');
+      const dest = ref(storage, `programme/${newName}`);
+      await uploadBytes(dest, file);
+      setUploadMsg('Televersement termine.');
       await refreshList();
     } catch (err: any) {
       setUploadMsg(err?.message ?? String(err));
@@ -178,77 +215,94 @@ export default function ImportationPdfPage() {
   }
 
   return (
-    <div className="pdf-page">
-      <div className="pdf-toolbar">
-        <div className="left">
+    <div className="content-page">
+      <header className="content-header">
+        <h1>Contenus application</h1>
+        <nav className="content-tabs">
+          {SECTIONS.map((sectionDef) => (
+            <button
+              key={sectionDef.id}
+              type="button"
+              className={`content-tab ${section === sectionDef.id ? 'active' : ''}`}
+              onClick={() => setSection(sectionDef.id)}
+            >
+              {sectionDef.label}
+            </button>
+          ))}
+        </nav>
+        <div className="content-settings">
           <label>
-            Congrès ID&nbsp;
-            <input value={congresId} onChange={e => setCongresId(e.target.value)} />
+            Congres ID
+            <input value={congresId} onChange={(event) => setCongresId(event.target.value)} />
           </label>
         </div>
-        <div className="right">
-          {isAdmin ? (
-            <>
-              <label className="btn-primary">
-                + Importer un PDF
-                <input type="file" accept="application/pdf" onChange={onPickFile} hidden />
-              </label>
-              {uploadMsg && <span className="hint">{uploadMsg}</span>}
-            </>
-          ) : (
-            <span className="hint">Upload réservé aux admins</span>
-          )}
-        </div>
-      </div>
+      </header>
 
-      {error && <div className="hint">{`Attention : ${error}`}</div>}
+      {error && <div className="content-alert">{`Attention : ${error}`}</div>}
 
-      {loading && <div className="placeholder">Chargement des fichiers.</div>}
-
-      {!loading && latest && (
-        <div className="latest-card">
-          <div>
-            <div className="latest-title">Dernier PDF</div>
-            <div className="latest-name">{latest.name}</div>
-            <div className="latest-path">{latest.path}</div>
-            <div className="latest-meta">
-              {latest.timeCreated ? new Date(latest.timeCreated).toLocaleString('fr-FR') : 'Date inconnue'}
-              {typeof latest.size === 'number' ? ` | ${(latest.size / 1024).toFixed(0)} Ko` : ''}
+      <div className="content-body">
+        <section className="content-main">
+          <div className="upload-card">
+            <div className="upload-header">
+              <h2>Importer un document</h2>
+              <span className="upload-limit">PDF - 10 Mo max</span>
             </div>
-          </div>
-          <div>
-            {latest.url ? (
-              <a className="btn-primary" href={latest.url} target="_blank" rel="noreferrer">Télécharger</a>
-            ) : (
-              <span className="hint">URL indisponible</span>
+            <label className="dropzone">
+              <span className="drop-icon">PDF</span>
+              <span className="drop-text">Importer un PDF</span>
+              <input type="file" accept="application/pdf" hidden onChange={onPickFile} />
+            </label>
+            {uploadMsg && <span className="upload-status">{uploadMsg}</span>}
+
+            {selected && (
+              <div className="last-import">
+                <div className="last-label">Derniere importation</div>
+                <div className="last-name">{selected.name}</div>
+                <div className="last-meta">
+                  {selected.timeCreated ? new Date(selected.timeCreated).toLocaleString('fr-FR') : 'Date inconnue'}
+                </div>
+                <div className="last-path">{selected.path}</div>
+              </div>
             )}
           </div>
-        </div>
-      )}
 
-      {!loading && items.length === 0 && (
-        <div className="empty-state">Aucun PDF trouvé.</div>
-      )}
+          <div className="viewer-card">
+            {selected?.url ? (
+              <iframe title={selected.name} src={selected.url} className="pdf-viewer" />
+            ) : (
+              <div className="viewer-placeholder">Visualisateur de PDF</div>
+            )}
+          </div>
+        </section>
 
-      {!loading && items.length > 0 && (
-        <div className="list">
-          {items.map((it) => (
-            <div key={it.path} className="row">
-              <div className="row-main">
-                <div className="file-name">{it.name}</div>
-                <div className="file-path">{it.path}</div>
-                <div className="file-meta">
-                  {it.timeCreated ? new Date(it.timeCreated).toLocaleString('fr-FR') : '-'}
-                  {typeof it.size === 'number' ? ` | ${(it.size / 1024).toFixed(0)} Ko` : ''}
-                </div>
-              </div>
-              <div className="row-actions">
-                {it.url ? <a className="btn-ghost" href={it.url} target="_blank" rel="noreferrer">Télécharger</a> : <span className="hint">URL indisponible</span>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+        <aside className="content-history">
+          <div className="history-header">
+            <h2>Historique</h2>
+            <span className="history-hint">
+              {SECTIONS.find((sectionDef) => sectionDef.id === section)?.hint ?? 'programme'}
+            </span>
+          </div>
+          {loading && <div className="history-placeholder">Chargement...</div>}
+          {!loading && filteredItems.length === 0 && <div className="history-placeholder">Aucun document</div>}
+          {!loading && filteredItems.length > 0 && (
+            <ul className="history-list">
+              {filteredItems.map((item) => (
+                <li
+                  key={item.path}
+                  className={`history-item ${selected?.path === item.path ? 'active' : ''}`}
+                  onClick={() => setSelected(item)}
+                >
+                  <span className="history-name">{item.name}</span>
+                  <span className="history-date">
+                    {item.timeCreated ? new Date(item.timeCreated).toLocaleString('fr-FR') : '-'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }
+

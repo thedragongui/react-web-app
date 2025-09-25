@@ -18,7 +18,7 @@
 }
 .thead, .tr {
   display: grid;
-  grid-template-columns: 90px 1.2fr 1.4fr 1fr 0.9fr 80px 80px;
+  grid-template-columns: 90px 1.2fr 1.4fr 1fr 0.9fr 0.8fr 80px 80px;
   gap: 8px; align-items: center;
 }
 .thead { background: #f9fafb; padding: 10px 12px; border-bottom: 1px solid #e5e7eb; font-weight: 600; color: #374151; }

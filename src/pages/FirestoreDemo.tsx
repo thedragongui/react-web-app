@@ -4,11 +4,12 @@ import {
   getCongres, watchParticipants, getMyProfile, upsertMyProfile,
   addEvenement, addSponsor
 } from '../firestore/firestoreApi';
+import { DEFAULT_CONGRES_ID } from '../lib/congresId';
 
 
 export default function FirestoreDemo() {
   const { user, isAdmin } = useAuth();
-  const [congresId, setCongresId] = useState('Fragilite_2025'); // valeur par défaut vue en capture
+  const [congresId, setCongresId] = useState(DEFAULT_CONGRES_ID); // valeur par défaut vue en capture
   const [congres, setCongres] = useState<any>(null);
   const [participants, setParticipants] = useState<any[]>([]);
   const [profile, setProfile] = useState<any>(null);

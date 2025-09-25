@@ -4,24 +4,11 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { User } from 'firebase/auth';
+import type { CongresDocument, ParticipantDocument } from './schema';
 
-/** TYPES (adapte si besoin à ton schéma) */
-export type Congres = {
-  appTitle?: string;          // nom de l’app / congrès
-  description?: string;       // texte d’intro
-  backgroundColor?: string;   // ex: '#111827'
-  dashBoardItems?: Array<'sessions'|'presentations'|'participants'|'sponsors'|'programme'>;
-  [k: string]: any;
-};
-export type Participant = {
-  id?: string;           // ex: "100"
-  email?: string;
-  category?: string;     // "Participant" | ...
-  compagnie?: string;
-  alreadyScanned?: boolean;
-  isAdmin?: boolean;
-  [k: string]: any;
-};
+/** TYPES align�s au sch�ma Firestore */
+export type Congres = CongresDocument;
+export type Participant = ParticipantDocument;
 export type Personne = {
   email?: string;
   displayName?: string;
@@ -59,7 +46,10 @@ export async function listEvenements() {
 export async function listParticipants(congresId: string) {
   const q = query(congresParticipantsCol(congresId), orderBy('id')); // si index requis, retire orderBy
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ idDoc: d.id, ...(d.data() as Participant) }));
+  return snap.docs.map((d) => {
+    const data = d.data() as Participant;
+    return { idDoc: d.id, ...data, id: data.id ?? d.id };
+  });
 }
 
 export function watchParticipants(
@@ -68,13 +58,18 @@ export function watchParticipants(
 ) {
   const q = query(congresParticipantsCol(congresId), orderBy('id'));
   return onSnapshot(q, (snap) => {
-    cb(snap.docs.map(d => ({ idDoc: d.id, ...(d.data() as Participant) })));
+    cb(snap.docs.map((d) => {
+      const data = d.data() as Participant;
+      return { idDoc: d.id, ...data, id: data.id ?? d.id };
+    }));
   });
 }
 
 // création / mise à jour (les règles permettent write à tout utilisateur connecté)
 export async function upsertParticipant(congresId: string, idDoc: string, data: Partial<Participant>) {
-  await setDoc(doc(congresParticipantsCol(congresId), idDoc), data, { merge: true });
+  const payload: Partial<Participant> = { ...data };
+  if (payload.id == null) { payload.id = idDoc; }
+  await setDoc(doc(congresParticipantsCol(congresId), idDoc), payload, { merge: true });
 }
 
 /** --- PERSONNE: self-only (doc id == uid) --- */

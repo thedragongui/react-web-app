@@ -8,8 +8,8 @@ import {
 } from '../firestore/firestoreApi';
 import { useAuth } from '../auth/AuthContext';
 import './programme.css';
+import { DEFAULT_CONGRES_ID } from '../lib/congresId';
 
-const DEFAULT_CONGRES_ID = 'Fragilite_2025'; // adapte si besoin
 
 /* ===== utils ===== */
 function formatDate(d: string) {
