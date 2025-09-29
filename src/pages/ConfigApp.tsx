@@ -403,6 +403,3 @@ export default function ConfigApp() {
     </div>
   );
 }
-
-
-

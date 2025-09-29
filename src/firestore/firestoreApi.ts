@@ -72,6 +72,24 @@ export async function upsertParticipant(congresId: string, idDoc: string, data: 
   await setDoc(doc(congresParticipantsCol(congresId), idDoc), payload, { merge: true });
 }
 
+export async function getParticipantDoc(congresId: string, participantId: string) {
+  const ref = doc(congresParticipantsCol(congresId), participantId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return null;
+  const data = snap.data() as Participant;
+  return { idDoc: snap.id, ...data, id: data.id ?? snap.id };
+}
+
+export async function listParticipantSubcollection(
+  congresId: string,
+  participantId: string,
+  subcollection: string,
+) {
+  const parent = doc(congresParticipantsCol(congresId), participantId);
+  const col = collection(parent, subcollection);
+  const snap = await getDocs(col);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
 /** --- PERSONNE: self-only (doc id == uid) --- */
 export async function getMyProfile(user: User) {
   const snap = await getDoc(personneDoc(user.uid));

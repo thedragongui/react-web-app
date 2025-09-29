@@ -17,6 +17,7 @@ import ProfilePage from './pages/ProfilePage';
 import FirestoreDemo from './pages/FirestoreDemo';
 import StorageDemo from './pages/StorageDemo';
 import ConfigApp from './pages/ConfigApp';
+import DataInspectorPage from './pages/DataInspectorPage';
 
 export default function App() {
   return (
@@ -48,6 +49,7 @@ export default function App() {
             {/* routes de démo (cachées du menu) */}
             <Route path="dev/firestore" element={<FirestoreDemo />} />
             <Route path="dev/storage" element={<StorageDemo />} />
+            <Route path="dev/data-inspector" element={<DataInspectorPage />} />
           </Route>
 
           {/* fallback */}
