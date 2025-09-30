@@ -1,61 +1,191 @@
-/* Toolbar & cartes (déjà fourni plus tôt, gardé ici complet) */
-.toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
-.toolbar input { padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
-.btn-primary { padding: 10px 12px; border: none; border-radius: 8px; background: #111827; color: #fff; cursor: pointer; }
-.btn-primary:disabled { opacity: .6; cursor: not-allowed; }
-.btn-ghost { padding: 6px 8px; background: transparent; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; }
-
-.placeholder { padding: 12px; color: #6b7280; }
-.empty-state { padding: 16px; border: 1px dashed #d1d5db; color: #6b7280; border-radius: 12px; background: #fff; }
-
-.session-list { display: grid; gap: 16px; }
-.session-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px; }
-.session-header { display: grid; gap: 6px; }
-.session-title { font-weight: 600; font-size: 16px; }
-.session-info { display: flex; gap: 8px; align-items: center; color: #6b7280; font-size: 14px; }
-.session-moderators { color: #6b7280; font-size: 13px; }
-
-.pres-empty { padding: 8px; color: #6b7280; }
-.pres-list { list-style: none; padding: 0; margin: 8px 0 0 0; display: grid; gap: 10px; }
-.pres-item { display: grid; grid-template-columns: 40px 1fr; gap: 8px; align-items: start; padding: 8px 0; border-top: 1px solid #f3f4f6; }
-.pres-index { font-weight: 600; color: #6b7280; text-align: right; }
-.pres-title { font-weight: 500; }
-.pres-meta { color: #6b7280; font-size: 13px; }
-.speaker { color: #374151; }
-
-/* ===== Modale ===== */
-.modal-backdrop {
-  position: fixed; inset: 0; background: rgba(0,0,0,.3);
-  display: grid; place-items: center; z-index: 50;
+.programme-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
-.modal {
-  width: 680px; max-width: calc(100% - 24px);
-  background: #fff; border-radius: 12px; border: 1px solid #e5e7eb;
-  box-shadow: 0 10px 30px rgba(0,0,0,.15);
-  /* Adaptation dynamique */
-  max-height: 90vh; display: flex; flex-direction: column; overflow: hidden;
-}
-.modal-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 16px; border-bottom: 1px solid #f3f4f6;
-}
-.form { padding: 16px; display: grid; gap: 12px; flex: 1 1 auto; overflow: auto; }
-.field { display: grid; gap: 6px; }
-.field input, .field textarea, .field select { padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 8px; width: 100%; box-sizing: border-box; }
-.grid-2 { display: grid; gap: 12px; grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
-.row-between { display: flex; align-items: center; justify-content: space-between; }
-.mods { display: grid; gap: 8px; }
-.mod-row { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) auto; gap: 8px; align-items: center; }
-.error { color: #b91c1c; background: #fee2e2; border: 1px solid #fecaca; padding: 8px 10px; border-radius: 8px; }
-.actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
 
-/* boutons */
-.btn-danger { padding: 10px 12px; border: none; border-radius: 8px; background: #b91c1c; color: #fff; cursor: pointer; }
-.btn-danger:hover { filter: brightness(0.95); }
-.btn-ghost.sm { padding: 4px 6px; }
-.btn-ghost.sm.danger { color: #b91c1c; }
-.row-actions { display: flex; gap: 6px; }
+.programme-header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
 
-/* Confirm dialog */
-.modal.small { width: 520px; max-height: 90vh; }
-.confirm-body { padding: 16px; color: #374151; }
+.programme-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.programme-toolbar .spacer {
+  flex: 1;
+}
+
+.programme-toolbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.programme-toolbar input {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.btn-primary,
+.btn-outline,
+.btn-danger {
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-primary {
+  border: none;
+  background: #111827;
+  color: #fff;
+}
+
+.btn-outline {
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color: #111827;
+}
+
+.btn-danger {
+  border: none;
+  background: #b91c1c;
+  color: #fff;
+}
+
+.status {
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 10px;
+}
+
+.status.success { background: #dcfce7; color: #166534; }
+.status.error { background: #fee2e2; color: #b91c1c; }
+.status.info { background: #e0f2fe; color: #075985; }
+
+.programme-placeholder,
+.programme-empty {
+  border-radius: 12px;
+  border: 1px dashed #d1d5db;
+  padding: 18px;
+  text-align: center;
+  color: #6b7280;
+  background: #fff;
+}
+
+.programme-grid {
+  display: grid;
+  gap: 20px;
+}
+
+@media (min-width: 960px) {
+  .programme-grid {
+    grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  }
+}
+
+.programme-list {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.programme-list h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.list-container {
+  display: grid;
+  gap: 10px;
+  max-height: 480px;
+  overflow: auto;
+}
+
+.programme-item {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  padding: 12px 14px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color .2s, background .2s, color .2s;
+}
+
+.programme-item:hover {
+  border-color: #111827;
+}
+
+.programme-item.active {
+  border-color: #111827;
+  background: #111827;
+  color: #fff;
+}
+
+.programme-item .programme-title {
+  font-weight: 600;
+}
+
+.programme-item .programme-info,
+.programme-item .programme-meta {
+  font-size: 13px;
+  color: inherit;
+  opacity: 0.85;
+}
+
+.programme-editor {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 20px;
+  display: grid;
+  gap: 12px;
+}
+
+.programme-editor h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.programme-editor textarea {
+  min-height: 420px;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  padding: 16px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.editor-hint {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.editor-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+
+
+
