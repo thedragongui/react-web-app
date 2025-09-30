@@ -63,6 +63,12 @@
   color: #fff;
 }
 
+.btn-outline.small,
+.btn-primary.small {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
 .status {
   font-size: 13px;
   padding: 8px 12px;
@@ -83,109 +89,247 @@
   background: #fff;
 }
 
-.programme-grid {
-  display: grid;
-  gap: 20px;
-}
-
-@media (min-width: 960px) {
-  .programme-grid {
-    grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
-  }
-}
-
-.programme-list {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 16px;
-  padding: 20px;
+.programme-stats {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.programme-list h2 {
-  margin: 0;
-  font-size: 18px;
-}
-
-.list-container {
-  display: grid;
-  gap: 10px;
-  max-height: 480px;
-  overflow: auto;
-}
-
-.programme-item {
-  display: grid;
-  gap: 4px;
-  text-align: left;
-  border-radius: 12px;
-  border: 1px solid #e5e7eb;
-  padding: 12px 14px;
-  background: #fff;
-  cursor: pointer;
-  transition: border-color .2s, background .2s, color .2s;
-}
-
-.programme-item:hover {
-  border-color: #111827;
-}
-
-.programme-item.active {
-  border-color: #111827;
-  background: #111827;
-  color: #fff;
-}
-
-.programme-item .programme-title {
-  font-weight: 600;
-}
-
-.programme-item .programme-info,
-.programme-item .programme-meta {
+  gap: 8px;
+  color: #6b7280;
   font-size: 13px;
-  color: inherit;
-  opacity: 0.85;
 }
 
-.programme-editor {
+.session-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.session-card {
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 16px;
   padding: 20px;
   display: grid;
+  gap: 16px;
+}
+
+.session-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
   gap: 12px;
 }
 
-.programme-editor h2 {
+.session-title h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: 20px;
 }
 
-.programme-editor textarea {
-  min-height: 420px;
-  width: 100%;
-  border-radius: 12px;
-  border: 1px solid #e5e7eb;
-  background: #f9fafb;
-  padding: 16px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+.session-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #6b7280;
   font-size: 13px;
-  resize: vertical;
 }
 
-.editor-hint {
+.session-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.icon-btn {
+  border: none;
+  background: transparent;
+  color: #111827;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 6px 8px;
+}
+
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.session-body {
+  display: grid;
+  gap: 14px;
+}
+
+.programme-section {
+  display: grid;
+  gap: 6px;
+}
+
+.section-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #6b7280;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: #f3f4f6;
+  font-size: 13px;
+}
+
+.session-controls {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.presentation-list {
+  display: grid;
+  gap: 12px;
+}
+
+.presentation-row {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.presentation-info {
+  display: grid;
+  gap: 8px;
+}
+
+.presentation-info h4 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.presentation-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   font-size: 13px;
   color: #6b7280;
 }
 
-.editor-footer {
+.presentation-description {
+  margin: 0;
+  font-size: 13px;
+  color: #374151;
+}
+
+.presentation-speakers ul {
+  padding-left: 16px;
+  margin: 0;
+}
+
+.presentation-actions {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modal-body {
+  display: grid;
+  gap: 12px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field input,
+.field textarea {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.grid-2 {
+  display: grid;
+  gap: 12px;
+}
+
+@media (min-width: 640px) {
+  .grid-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.checkbox-field {
+  display: flex;
+  gap: 8px;
   align-items: center;
 }
 
+.moderator-list {
+  display: grid;
+  gap: 10px;
+}
 
+.moderator-row {
+  display: grid;
+  gap: 8px;
+}
 
+@media (min-width: 640px) {
+  .moderator-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  }
+}
 
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.modal {
+  width: min(640px, 90vw);
+}
+
+.modal textarea {
+  min-height: 120px;
+}
+
+.programme-empty {
+  border-radius: 12px;
+  border: 1px dashed #d1d5db;
+  padding: 16px;
+  text-align: center;
+  color: #6b7280;
+  background: #fff;
+}
+
+@media (max-width: 600px) {
+  .programme-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .session-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .presentation-row {
+    flex-direction: column;
+  }
+
+  .presentation-actions {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+}
