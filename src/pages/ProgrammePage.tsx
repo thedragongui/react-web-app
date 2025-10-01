@@ -388,9 +388,9 @@ export default function ProgrammePage() {
                     </div>
                   </div>
                   <div className="session-actions">
-                    <button className="icon-btn" onClick={() => handleEditSession(idx)} disabled={!isAdmin}>Modifier</button>
-                    <button className="icon-btn" onClick={() => handleDeleteSession(idx)} disabled={!isAdmin}>Supprimer</button>
-                    <button className="icon-btn" onClick={() => toggleExpanded(programme, idx)}>{isOpen ? 'Reduire' : 'Deplier'}</button>
+                    <button className="action-btn edit" onClick={() => handleEditSession(idx)} disabled={!isAdmin}>Modifier</button>
+                    <button className="action-btn delete" onClick={() => handleDeleteSession(idx)} disabled={!isAdmin}>Supprimer</button>
+                    <button className={`action-btn toggle${isOpen ? ' is-open' : ''}`} onClick={() => toggleExpanded(programme, idx)}>{isOpen ? 'Reduire' : 'Deplier'}</button>
                   </div>
                 </div>
                 {isOpen && (
@@ -446,8 +446,8 @@ export default function ProgrammePage() {
                             {presentation.description && <p className="presentation-description">{presentation.description}</p>}
                           </div>
                           <div className="presentation-actions">
-                            <button className="icon-btn" onClick={() => handleEditPresentation(idx, presentationIdx)} disabled={!isAdmin}>Modifier</button>
-                            <button className="icon-btn" onClick={() => handleDeletePresentation(idx, presentationIdx)} disabled={!isAdmin}>Supprimer</button>
+                            <button className="action-btn edit" onClick={() => handleEditPresentation(idx, presentationIdx)} disabled={!isAdmin}>Modifier</button>
+                            <button className="action-btn delete" onClick={() => handleDeletePresentation(idx, presentationIdx)} disabled={!isAdmin}>Supprimer</button>
                           </div>
                         </div>
                       ))}
