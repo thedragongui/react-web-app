@@ -1,13 +1,20 @@
-﻿import { useEffect, useMemo, useState } from 'react';
-import { watchParticipants, type Participant } from '../firestore/firestoreApi';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  watchParticipants,
+  watchCongres,
+  getParticipantRootDoc,
+  listParticipantRootSubcollection,
+  type Participant,
+  type Congres,
+  type ParticipantRootDoc,
+  type ParticipantRootSubRow,
+} from '../firestore/firestoreApi';
 import './participants.css';
 import { DEFAULT_CONGRES_ID } from '../lib/congresId';
 
 type Row = Participant & { idDoc: string };
 
 const PAGE_SIZE = 25;
-
-//
 
 function displayName(p: Row) {
   // essaie plusieurs conventions possibles
@@ -43,14 +50,41 @@ export default function ParticipantsPage() {
   // Pagination
   const [page, setPage] = useState(1);
 
+  // Selection / details
+  const [selectedId, setSelectedId] = useState('');
+  const [congresData, setCongresData] = useState<(Congres & { id: string }) | null>(null);
+  const [congresError, setCongresError] = useState<string | null>(null);
+  const [rootDoc, setRootDoc] = useState<ParticipantRootDoc | null>(null);
+  const [rootSubRows, setRootSubRows] = useState<ParticipantRootSubRow[]>([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
   useEffect(() => {
     setLoading(true);
-    const unsub = watchParticipants(congresId, (r) => {
-      setRows(r.sort(compareById));
+    const unsub = watchParticipants(congresId, (incoming) => {
+      const sorted = [...incoming].sort(compareById);
+      setRows(sorted);
       setLoading(false);
       setPage(1); // reset page quand on change de dataset
     });
     return () => unsub();
+  }, [congresId]);
+
+  useEffect(() => {
+    setCongresError(null);
+    setCongresData(null);
+    const unsub = watchCongres(
+      congresId,
+      (doc) => {
+        setCongresData(doc);
+      },
+      (err: any) => {
+        setCongresError(err?.message ?? String(err));
+      },
+    );
+    return () => {
+      unsub();
+    };
   }, [congresId]);
 
   // debounce recherche
@@ -58,6 +92,64 @@ export default function ParticipantsPage() {
     const t = setTimeout(() => setDebouncedQ(q.trim().toLowerCase()), 250);
     return () => clearTimeout(t);
   }, [q]);
+
+  useEffect(() => {
+    if (rows.length === 0) {
+      if (selectedId !== '') setSelectedId('');
+      return;
+    }
+    if (!rows.some(r => r.idDoc === selectedId)) {
+      setSelectedId(rows[0].idDoc);
+    }
+  }, [rows, selectedId]);
+
+  const selectedRow = useMemo(() => rows.find(r => r.idDoc === selectedId) ?? null, [rows, selectedId]);
+
+  useEffect(() => {
+    setDetailError(null);
+    if (!selectedRow) {
+      setDetailLoading(false);
+      setRootDoc(null);
+      setRootSubRows([]);
+      return;
+    }
+    let cancelled = false;
+    async function loadDetails() {
+      setDetailLoading(true);
+      const participantKey = String(selectedRow.id ?? selectedRow.idDoc);
+      const [rootDocRes, subRes] = await Promise.allSettled([
+        getParticipantRootDoc(participantKey),
+        listParticipantRootSubcollection(participantKey, congresId),
+      ]);
+      if (cancelled) return;
+      let nextError: string | null = null;
+      if (rootDocRes.status === 'fulfilled') {
+        setRootDoc(rootDocRes.value);
+      } else {
+        setRootDoc(null);
+        nextError = rootDocRes.reason?.message ?? String(rootDocRes.reason ?? '');
+      }
+      if (subRes.status === 'fulfilled') {
+        setRootSubRows(subRes.value);
+      } else {
+        setRootSubRows([]);
+        const message = subRes.reason?.message ?? String(subRes.reason ?? '');
+        nextError = nextError ? `${nextError} | ${message}` : message;
+      }
+      setDetailError(nextError);
+      setDetailLoading(false);
+    }
+    loadDetails().catch((err) => {
+      if (cancelled) return;
+      setRootDoc(null);
+      setRootSubRows([]);
+      setDetailError(err?.message ?? String(err));
+      setDetailLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRow, congresId]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -93,6 +185,7 @@ export default function ParticipantsPage() {
   const pageSafe = Math.min(page, pages);
   const start = (pageSafe - 1) * PAGE_SIZE;
   const current = filtered.slice(start, start + PAGE_SIZE);
+  const participantKey = selectedRow ? String(selectedRow.id ?? selectedRow.idDoc) : '';
 
   return (
     <div className="ppage">
@@ -154,7 +247,19 @@ export default function ParticipantsPage() {
         {!loading && current.length > 0 && (
           <div className="tbody">
             {current.map((r) => (
-              <div key={r.idDoc} className="tr">
+              <div
+                key={r.idDoc}
+                className={`tr ${selectedId === r.idDoc ? 'selected' : ''}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedId(r.idDoc)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setSelectedId(r.idDoc);
+                  }
+                }}
+              >
                 <div className="td id mono">{r.id ?? r.idDoc}</div>
                 <div className="td name">{displayName(r)}</div>
                 <div className="td email">
@@ -179,7 +284,7 @@ export default function ParticipantsPage() {
           disabled={pageSafe <= 1}
           onClick={() => setPage(p => Math.max(1, p - 1))}
         >
-          &lt; Precedent
+          <span aria-hidden="true">&lt; </span>Precedent
         </button>
         <div className="page-indicator">
           Page {pageSafe} / {pages}
@@ -189,10 +294,64 @@ export default function ParticipantsPage() {
           disabled={pageSafe >= pages}
           onClick={() => setPage(p => Math.min(pages, p + 1))}
         >
-          Suivant &gt;
+          Suivant <span aria-hidden="true">&gt;</span>
         </button>
+      </div>
+
+      <div className="pdetails">
+        <section className="pdetail-card">
+          <div className="pdetail-header">
+            <h3>Document congres/{congresId}</h3>
+            {congresError && <span className="pdetail-badge error">Erreur</span>}
+          </div>
+          {congresError && <div className="pdetail-error">{congresError}</div>}
+          <pre className="json-viewer">
+            {congresData ? JSON.stringify(congresData, null, 2) : 'Aucune donnee'}
+          </pre>
+        </section>
+
+        <section className="pdetail-card">
+          <div className="pdetail-header">
+            <h3>Participant selectionne</h3>
+            {selectedRow && <span className="pdetail-badge">ID: {selectedRow.id ?? selectedRow.idDoc}</span>}
+          </div>
+          {selectedRow ? (
+            <pre className="json-viewer">{JSON.stringify(selectedRow, null, 2)}</pre>
+          ) : (
+            <div className="pdetail-empty">Selectionnez un participant dans la liste.</div>
+          )}
+        </section>
+
+        <section className="pdetail-card">
+          <div className="pdetail-header">
+            <h3>participants/{participantKey || '...'}</h3>
+            {detailLoading && <span className="pdetail-badge">Chargement...</span>}
+          </div>
+          {detailError && <div className="pdetail-error">{detailError}</div>}
+          {selectedRow ? (
+            <>
+              <div className="pdetail-block">
+                <strong className="pdetail-title">Document racine</strong>
+                {rootDoc ? (
+                  <pre className="json-viewer">{JSON.stringify(rootDoc, null, 2)}</pre>
+                ) : (
+                  <div className="pdetail-empty">Aucune donnee trouvee.</div>
+                )}
+              </div>
+              <div className="pdetail-block">
+                <strong className="pdetail-title">Sous-collection {congresId}</strong>
+                {rootSubRows.length > 0 ? (
+                  <pre className="json-viewer">{JSON.stringify(rootSubRows, null, 2)}</pre>
+                ) : (
+                  <div className="pdetail-empty">Aucune donnee trouvee.</div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="pdetail-empty">Selectionnez un participant dans la liste.</div>
+          )}
+        </section>
       </div>
     </div>
   );
 }
-

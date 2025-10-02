@@ -119,7 +119,7 @@ function toModeratorForm(speaker?: ProgrammeSpeaker): ModeratorForm {
     id: speaker?.id ?? '',
     prenom: speaker?.prenom ?? (speaker as any)?.firstName ?? '',
     nom: speaker?.nom ?? (speaker as any)?.lastName ?? '',
-    ville: speaker?.lieuDeTravail ?? speaker?.cityCountry ?? '',
+    ville: speaker?.lieuDeTravail ?? (speaker as any)?.cityCountry ?? '',
   };
 }
 

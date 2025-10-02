@@ -18,6 +18,15 @@ export type Personne = {
   [k: string]: any;
 };
 
+export type ParticipantRootDoc = {
+  id: string;
+  [k: string]: unknown;
+};
+export type ParticipantRootSubRow = {
+  id: string;
+  [k: string]: unknown;
+};
+
 /** HELPERS DE CHEMINS */
 const congresDoc = (congresId: string) => doc(db, 'congres', congresId) as DocumentReference<Congres>;
 const congresParticipantsCol = (congresId: string) =>
@@ -25,6 +34,11 @@ const congresParticipantsCol = (congresId: string) =>
 const sponsorsCol = collection(db, 'sponsors') as CollectionReference<any>;
 const evenementsCol = collection(db, 'evenements') as CollectionReference<any>;
 const personneDoc = (uid: string) => doc(db, 'personne', uid) as DocumentReference<Personne>;
+
+/** Racine globale des participants (hors sous-collection de congrès) */
+const rootParticipantDoc = (participantId: string) => doc(db, 'participants', participantId);
+const rootParticipantSubcollection = (participantId: string, subcollection: string) =>
+  collection(rootParticipantDoc(participantId), subcollection);
 
 /** --- LECTURES PUBLIQUES --- */
 export async function getCongres(congresId: string): Promise<(Congres & {id:string}) | null> {
@@ -90,6 +104,24 @@ export async function listParticipantSubcollection(
   const snap = await getDocs(col);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
+
+export async function getParticipantRootDoc(participantId: string): Promise<ParticipantRootDoc | null> {
+  if (!participantId) return null;
+  const snap = await getDoc(rootParticipantDoc(participantId));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...(snap.data() as Record<string, unknown>) };
+}
+
+export async function listParticipantRootSubcollection(
+  participantId: string,
+  subcollection: string,
+): Promise<ParticipantRootSubRow[]> {
+  if (!participantId || !subcollection) return [];
+  const col = rootParticipantSubcollection(participantId, subcollection);
+  const snap = await getDocs(col);
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }));
+}
+
 /** --- PERSONNE: self-only (doc id == uid) --- */
 export async function getMyProfile(user: User) {
   const snap = await getDoc(personneDoc(user.uid));
