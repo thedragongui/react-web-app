@@ -6,6 +6,8 @@ import {
   watchAppConfig,
   saveAppConfig,
   type AppConfig,
+  type AppIdentity,
+  type AppStoreInfo,
 } from '../firestore/firestoreApi';
 import { storage } from '../firebase';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
@@ -133,25 +135,34 @@ export default function ConfigApp() {
     };
   }, [congresId]);
 
-  const identity = cfg?.identity ?? {};
-  const store = cfg?.store ?? { appName: '' };
+  const identity: AppIdentity = cfg?.identity ?? {};
+  const store: AppStoreInfo = cfg?.store ?? { appName: '' };
 
   const validStore = useMemo(() => !!store.appName?.trim(), [store.appName]);
 
-  const updateIdentity = (patch: Partial<typeof identity>) => {
-    setCfg((current) => ({
-      ...(current ?? {}),
-      identity: { ...(current?.identity ?? {}), ...patch },
-      store: current?.store ?? store,
-    }));
+  const updateIdentity = (patch: Partial<AppIdentity>) => {
+    setCfg((current) => {
+      const nextIdentity: AppIdentity = { ...(current?.identity ?? {}), ...patch };
+      const nextStore: AppStoreInfo = current?.store ?? store;
+      return {
+        ...(current ?? {}),
+        identity: nextIdentity,
+        store: nextStore,
+      };
+    });
   };
 
-  const updateStore = (patch: Partial<typeof store>) => {
-    setCfg((current) => ({
-      ...(current ?? {}),
-      identity: current?.identity ?? identity,
-      store: { ...(current?.store ?? {}), ...patch },
-    }));
+  const updateStore = (patch: Partial<AppStoreInfo>) => {
+    setCfg((current) => {
+      const baseIdentity: AppIdentity = current?.identity ?? identity;
+      const baseStore: AppStoreInfo = current?.store ?? store;
+      const nextStore: AppStoreInfo = { ...baseStore, ...patch };
+      return {
+        ...(current ?? {}),
+        identity: baseIdentity,
+        store: nextStore,
+      };
+    });
   };
 
   const bannerNote = `${BANNER_DIM.w} x ${BANNER_DIM.h} px - ${MAX_MB} Mo max`;

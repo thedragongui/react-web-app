@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import {
   watchParticipants,
   watchCongres,
   getParticipantRootDoc,
   listParticipantRootSubcollection,
+  createParticipant,
+  upsertParticipant,
+  deleteParticipant,
   type Participant,
   type Congres,
   type ParticipantRootDoc,
@@ -13,6 +16,66 @@ import './participants.css';
 import { DEFAULT_CONGRES_ID } from '../lib/congresId';
 
 type Row = Participant & { idDoc: string };
+
+const NEW_PARTICIPANT_ID = '__new__';
+
+type ParticipantFormState = {
+  id: string;
+  idDoc: string;
+  prenom: string;
+  nom: string;
+  email: string;
+  compagnie: string;
+  pays: string;
+  category: string;
+  isAdmin: boolean;
+  alreadyScanned: boolean;
+};
+
+type ActionState = {
+  saving: boolean;
+  deleting: boolean;
+  error: string | null;
+  success: string | null;
+};
+
+function makeEmptyForm(): ParticipantFormState {
+  return {
+    id: '',
+    idDoc: '',
+    prenom: '',
+    nom: '',
+    email: '',
+    compagnie: '',
+    pays: '',
+    category: '',
+    isAdmin: false,
+    alreadyScanned: false,
+  };
+}
+
+function buildParticipantPayload(form: ParticipantFormState): Partial<Participant> {
+  const trimmed = (value: string) => value.trim();
+  const payload: Partial<Participant> = {
+    id: trimmed(form.id) || undefined,
+    prenom: trimmed(form.prenom) || undefined,
+    nom: trimmed(form.nom) || undefined,
+    email: trimmed(form.email) || undefined,
+    compagnie: trimmed(form.compagnie) || undefined,
+    pays: trimmed(form.pays) || undefined,
+    category: trimmed(form.category) || undefined,
+    isAdmin: form.isAdmin,
+    alreadyScanned: form.alreadyScanned,
+  };
+  Object.keys(payload).forEach((key) => {
+    if ((payload as any)[key] === undefined) {
+      delete (payload as any)[key];
+    }
+  });
+  return payload;
+}
+
+const initialActionState: ActionState = { saving: false, deleting: false, error: null, success: null };
 
 const PAGE_SIZE = 25;
 
@@ -59,6 +122,10 @@ export default function ParticipantsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
+  const [formState, setFormState] = useState<ParticipantFormState>(() => makeEmptyForm());
+  const [actionState, setActionState] = useState<ActionState>(initialActionState);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+
   useEffect(() => {
     setLoading(true);
     const unsub = watchParticipants(congresId, (incoming) => {
@@ -94,16 +161,33 @@ export default function ParticipantsPage() {
   }, [q]);
 
   useEffect(() => {
+    if (selectedId === NEW_PARTICIPANT_ID) return;
+    if (pendingId && selectedId === pendingId && !rows.some(r => r.idDoc === pendingId)) {
+      return;
+    }
     if (rows.length === 0) {
       if (selectedId !== '') setSelectedId('');
+      return;
+    }
+    if (!selectedId) {
+      setSelectedId(rows[0].idDoc);
       return;
     }
     if (!rows.some(r => r.idDoc === selectedId)) {
       setSelectedId(rows[0].idDoc);
     }
-  }, [rows, selectedId]);
+  }, [rows, selectedId, pendingId]);
 
-  const selectedRow = useMemo(() => rows.find(r => r.idDoc === selectedId) ?? null, [rows, selectedId]);
+  useEffect(() => {
+    if (pendingId && rows.some(r => r.idDoc === pendingId)) {
+      setPendingId(null);
+    }
+  }, [pendingId, rows]);
+
+  const selectedRow = useMemo(() => {
+    if (selectedId === NEW_PARTICIPANT_ID) return null;
+    return rows.find(r => r.idDoc === selectedId) ?? null;
+  }, [rows, selectedId]);
 
   useEffect(() => {
     setDetailError(null);
@@ -113,10 +197,11 @@ export default function ParticipantsPage() {
       setRootSubRows([]);
       return;
     }
+    const row = selectedRow;
     let cancelled = false;
     async function loadDetails() {
       setDetailLoading(true);
-      const participantKey = String(selectedRow.id ?? selectedRow.idDoc);
+      const participantKey = String(row.id ?? row.idDoc);
       const [rootDocRes, subRes] = await Promise.allSettled([
         getParticipantRootDoc(participantKey),
         listParticipantRootSubcollection(participantKey, congresId),
@@ -151,6 +236,30 @@ export default function ParticipantsPage() {
     };
   }, [selectedRow, congresId]);
 
+  useEffect(() => {
+    setActionState(() => ({ ...initialActionState }));
+    if (selectedId === NEW_PARTICIPANT_ID) {
+      setFormState(makeEmptyForm());
+      return;
+    }
+    if (selectedRow) {
+      setFormState({
+        id: selectedRow.id != null ? String(selectedRow.id) : '',
+        idDoc: selectedRow.idDoc,
+        prenom: selectedRow.prenom ? String(selectedRow.prenom) : '',
+        nom: selectedRow.nom ? String(selectedRow.nom) : '',
+        email: selectedRow.email ?? '',
+        compagnie: selectedRow.compagnie ? String(selectedRow.compagnie) : '',
+        pays: selectedRow.pays ? String(selectedRow.pays) : '',
+        category: selectedRow.category ? String(selectedRow.category) : '',
+        isAdmin: !!selectedRow.isAdmin,
+        alreadyScanned: !!selectedRow.alreadyScanned,
+      });
+    } else {
+      setFormState(makeEmptyForm());
+    }
+  }, [selectedId, selectedRow]);
+
   const categories = useMemo(() => {
     const set = new Set<string>();
     rows.forEach(r => { if (r.category) set.add(String(r.category)); });
@@ -180,12 +289,96 @@ export default function ParticipantsPage() {
     return data;
   }, [rows, category, onlyAdmins, onlyScanned, debouncedQ]);
 
+  const isCreating = selectedId === NEW_PARTICIPANT_ID;
+
+  const handleFieldChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = event.target;
+    setFormState(prev => ({
+      ...prev,
+      [name as keyof ParticipantFormState]: value,
+    }));
+  };
+
+  const handleCheckboxChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const { name, checked } = event.target;
+    setFormState(prev => ({
+      ...prev,
+      [name as keyof ParticipantFormState]: checked,
+    }));
+  };
+
+  const handleSave = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setActionState(() => ({ ...initialActionState, saving: true }));
+    try {
+      const payload = buildParticipantPayload(formState);
+      if (isCreating) {
+        const createdId = await createParticipant(
+          congresId.trim(),
+          payload,
+          formState.idDoc.trim() || undefined,
+        );
+        setActionState(() => ({ ...initialActionState, success: 'Participant cree avec succes.' }));
+        setPendingId(createdId);
+        setSelectedId(createdId);
+      } else if (selectedRow) {
+        await upsertParticipant(congresId.trim(), selectedRow.idDoc, payload);
+        setPendingId(null);
+        setActionState(() => ({ ...initialActionState, success: 'Participant mis a jour.' }));
+      }
+    } catch (err: any) {
+      setPendingId(null);
+      setActionState(() => ({
+        ...initialActionState,
+        error: err?.message ?? String(err),
+      }));
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selectedRow) return;
+    const confirmDelete = window.confirm('Supprimer ce participant ?');
+    if (!confirmDelete) return;
+    setActionState(() => ({ ...initialActionState, deleting: true }));
+    try {
+      await deleteParticipant(congresId.trim(), selectedRow.idDoc);
+      setActionState(() => ({ ...initialActionState, success: 'Participant supprime.' }));
+      setPendingId(null);
+      setSelectedId('');
+    } catch (err: any) {
+      setActionState(() => ({
+        ...initialActionState,
+        error: err?.message ?? String(err),
+      }));
+    }
+  };
+
+  const handleCancelCreate = () => {
+    setActionState(() => ({ ...initialActionState }));
+    setPendingId(null);
+    if (rows.length > 0) {
+      setSelectedId(rows[0].idDoc);
+    } else {
+      setSelectedId('');
+      setFormState(makeEmptyForm());
+    }
+  };
+
+  const handleStartCreate = () => {
+    setActionState(() => ({ ...initialActionState }));
+    setFormState(makeEmptyForm());
+    setPendingId(null);
+    setSelectedId(NEW_PARTICIPANT_ID);
+  };
+
   const total = filtered.length;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const pageSafe = Math.min(page, pages);
   const start = (pageSafe - 1) * PAGE_SIZE;
   const current = filtered.slice(start, start + PAGE_SIZE);
-  const participantKey = selectedRow ? String(selectedRow.id ?? selectedRow.idDoc) : '';
+  const participantKey = isCreating
+    ? 'nouveau'
+    : selectedRow ? String(selectedRow.id ?? selectedRow.idDoc) : '';
 
   return (
     <div className="ppage">
@@ -220,6 +413,14 @@ export default function ParticipantsPage() {
         </label>
 
         <div className="spacer" />
+
+        <button
+          className="btn-primary"
+          type="button"
+          onClick={handleStartCreate}
+        >
+          Ajouter un participant
+        </button>
 
         <div className="count">
           {loading ? 'Chargement...' : `${total} resultat${total > 1 ? 's' : ''}`}
@@ -312,12 +513,145 @@ export default function ParticipantsPage() {
 
         <section className="pdetail-card">
           <div className="pdetail-header">
-            <h3>Participant selectionne</h3>
-            {selectedRow && <span className="pdetail-badge">ID: {selectedRow.id ?? selectedRow.idDoc}</span>}
+            <h3>{isCreating ? 'Nouveau participant' : 'Participant selectionne'}</h3>
+            {isCreating && <span className="pdetail-badge">Mode creation</span>}
+            {!isCreating && selectedRow && (
+              <span className="pdetail-badge">ID doc: {selectedRow.idDoc}</span>
+            )}
           </div>
-          {selectedRow ? (
-            <pre className="json-viewer">{JSON.stringify(selectedRow, null, 2)}</pre>
-          ) : (
+          <form className="participant-form" onSubmit={handleSave}>
+            <div className="form-grid">
+              {isCreating && (
+                <label>
+                  ID document
+                  <input
+                    name="idDoc"
+                    value={formState.idDoc}
+                    onChange={handleFieldChange}
+                    placeholder="Laisser vide pour auto"
+                  />
+                </label>
+              )}
+              <label>
+                Champ id
+                <input
+                  name="id"
+                  value={formState.id}
+                  onChange={handleFieldChange}
+                  placeholder="Identifiant visible"
+                />
+              </label>
+              <label>
+                Prenom
+                <input
+                  name="prenom"
+                  value={formState.prenom}
+                  onChange={handleFieldChange}
+                />
+              </label>
+              <label>
+                Nom
+                <input
+                  name="nom"
+                  value={formState.nom}
+                  onChange={handleFieldChange}
+                />
+              </label>
+              <label>
+                Email
+                <input
+                  name="email"
+                  type="email"
+                  value={formState.email}
+                  onChange={handleFieldChange}
+                />
+              </label>
+              <label>
+                Compagnie
+                <input
+                  name="compagnie"
+                  value={formState.compagnie}
+                  onChange={handleFieldChange}
+                />
+              </label>
+              <label>
+                Pays
+                <input
+                  name="pays"
+                  value={formState.pays}
+                  onChange={handleFieldChange}
+                />
+              </label>
+              <label>
+                Categorie
+                <input
+                  name="category"
+                  value={formState.category}
+                  onChange={handleFieldChange}
+                />
+              </label>
+            </div>
+
+            <div className="form-checkboxes">
+              <label>
+                <input
+                  type="checkbox"
+                  name="isAdmin"
+                  checked={formState.isAdmin}
+                  onChange={handleCheckboxChange}
+                />
+                Admin
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  name="alreadyScanned"
+                  checked={formState.alreadyScanned}
+                  onChange={handleCheckboxChange}
+                />
+                Deja scanne
+              </label>
+            </div>
+
+            {actionState.error && <div className="form-alert error">{actionState.error}</div>}
+            {actionState.success && <div className="form-alert success">{actionState.success}</div>}
+
+            <div className="form-actions">
+              <button type="submit" className="btn-primary" disabled={actionState.saving}>
+                {actionState.saving ? 'Enregistrement...' : isCreating ? 'Creer' : 'Enregistrer'}
+              </button>
+              {!isCreating && (
+                <button
+                  type="button"
+                  className="btn-danger"
+                  onClick={handleDelete}
+                  disabled={actionState.deleting || actionState.saving}
+                >
+                  {actionState.deleting ? 'Suppression...' : 'Supprimer'}
+                </button>
+              )}
+              {isCreating && (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={handleCancelCreate}
+                  disabled={actionState.saving}
+                >
+                  Annuler
+                </button>
+              )}
+            </div>
+          </form>
+          {!isCreating && selectedRow && (
+            <details className="json-details">
+              <summary>Donnees brutes</summary>
+              <pre className="json-viewer">{JSON.stringify(selectedRow, null, 2)}</pre>
+            </details>
+          )}
+          {isCreating && (
+            <div className="pdetail-empty">Remplissez le formulaire puis cliquez sur Creer.</div>
+          )}
+          {!isCreating && !selectedRow && (
             <div className="pdetail-empty">Selectionnez un participant dans la liste.</div>
           )}
         </section>
@@ -347,6 +681,8 @@ export default function ParticipantsPage() {
                 )}
               </div>
             </>
+          ) : isCreating ? (
+            <div className="pdetail-empty">Creez un participant pour afficher ces donnees.</div>
           ) : (
             <div className="pdetail-empty">Selectionnez un participant dans la liste.</div>
           )}

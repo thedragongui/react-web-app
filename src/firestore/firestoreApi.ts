@@ -1,12 +1,12 @@
 import {
   doc, getDoc, setDoc, updateDoc, collection, getDocs, query, orderBy,
-  onSnapshot, addDoc, serverTimestamp, DocumentReference, CollectionReference
+  onSnapshot, addDoc, serverTimestamp, DocumentReference, CollectionReference, deleteDoc
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { User } from 'firebase/auth';
 import type { CongresDocument, ParticipantDocument } from './schema';
 
-/** TYPES align�s au sch�ma Firestore */
+/** TYPES alignés au schéma Firestore */
 export type Congres = CongresDocument;
 export type Participant = ParticipantDocument;
 export type Personne = {
@@ -35,7 +35,7 @@ const sponsorsCol = collection(db, 'sponsors') as CollectionReference<any>;
 const evenementsCol = collection(db, 'evenements') as CollectionReference<any>;
 const personneDoc = (uid: string) => doc(db, 'personne', uid) as DocumentReference<Personne>;
 
-/** Racine globale des participants (hors sous-collection de congr�s) */
+/** Racine globale des participants (hors sous-collection de congrès) */
 const rootParticipantDoc = (participantId: string) => doc(db, 'participants', participantId);
 const rootParticipantSubcollection = (participantId: string, subcollection: string) =>
   collection(rootParticipantDoc(participantId), subcollection);
@@ -46,17 +46,17 @@ export async function getCongres(congresId: string): Promise<(Congres & {id:stri
   return snap.exists() ? { id: snap.id, ...(snap.data() as Congres) } : null;
 }
 export async function listSponsors() {
-  const q = query(sponsorsCol, orderBy('name', 'asc')); // si pas de champ "name", enlève orderBy
+  const q = query(sponsorsCol, orderBy('name', 'asc')); // si pas de champ "name", enlÃ¨ve orderBy
   const snap = await getDocs(q);
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 export async function listEvenements() {
-  const q = query(evenementsCol, orderBy('date', 'asc')); // ou enlève orderBy si champ absent
+  const q = query(evenementsCol, orderBy('date', 'asc')); // ou enlÃ¨ve orderBy si champ absent
   const snap = await getDocs(q);
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-/** --- PARTICIPANTS D’UN CONGRES (auth requis par règle par défaut) --- */
+/** --- PARTICIPANTS Dâ€™UN CONGRES (auth requis par rÃ¨gle par dÃ©faut) --- */
 export async function listParticipants(congresId: string) {
   const q = query(congresParticipantsCol(congresId), orderBy('id')); // si index requis, retire orderBy
   const snap = await getDocs(q);
@@ -79,11 +79,30 @@ export function watchParticipants(
   });
 }
 
-// création / mise à jour (les règles permettent write à tout utilisateur connecté)
+// crÃ©ation / mise Ã  jour (les rÃ¨gles permettent write Ã  tout utilisateur connectÃ©)
 export async function upsertParticipant(congresId: string, idDoc: string, data: Partial<Participant>) {
   const payload: Partial<Participant> = { ...data };
   if (payload.id == null) { payload.id = idDoc; }
   await setDoc(doc(congresParticipantsCol(congresId), idDoc), payload, { merge: true });
+}
+
+export async function createParticipant(
+  congresId: string,
+  data: Partial<Participant>,
+  idDoc?: string,
+): Promise<string> {
+  const col = congresParticipantsCol(congresId);
+  const ref = idDoc ? doc(col, idDoc) : doc(col);
+  const payload: Partial<Participant> = { ...data };
+  if (payload.id == null) {
+    payload.id = ref.id;
+  }
+  await setDoc(ref, payload);
+  return ref.id;
+}
+
+export async function deleteParticipant(congresId: string, idDoc: string): Promise<void> {
+  await deleteDoc(doc(congresParticipantsCol(congresId), idDoc));
 }
 
 export async function getParticipantDoc(congresId: string, participantId: string) {
@@ -129,14 +148,14 @@ export async function getMyProfile(user: User) {
 }
 
 export async function upsertMyProfile(user: User, patch: Partial<Personne>) {
-  // Respecte la règle: on n’écrit QUE sur personne/{uid}
+  // Respecte la rÃ¨gle: on nâ€™Ã©crit QUE sur personne/{uid}
   await setDoc(personneDoc(user.uid), { ...patch, updatedAt: serverTimestamp() }, { merge: true });
 }
 
-/** --- ÉCRITURES PROTÉGÉES CÔTÉ UI (facultatives) ---
- * Les règles autorisent n’importe quel utilisateur connecté à écrire dans
- * `congres`, `evenements`, `sponsors`. Si tu veux réserver au rôle "admin",
- * fais le contrôle côté client avec isAdmin avant d’appeler ces fonctions.
+/** --- Ã‰CRITURES PROTÃ‰GÃ‰ES CÃ”TÃ‰ UI (facultatives) ---
+ * Les rÃ¨gles autorisent nâ€™importe quel utilisateur connectÃ© Ã  Ã©crire dans
+ * `congres`, `evenements`, `sponsors`. Si tu veux rÃ©server au rÃ´le "admin",
+ * fais le contrÃ´le cÃ´tÃ© client avec isAdmin avant dâ€™appeler ces fonctions.
  */
 export async function updateCongres(congresId: string, patch: Partial<Congres>) {
   await updateDoc(congresDoc(congresId), patch);
@@ -153,7 +172,7 @@ import {
   CollectionReference as _CollectionReference, DocumentReference as _DocumentReference
 } from 'firebase/firestore';
 
-// ========= PROGRAMME (sessions + présentations) =========
+// ========= PROGRAMME (sessions + prÃ©sentations) =========
 
 export type Moderator = { firstName: string; lastName: string; cityCountry?: string };
 export type Session = {
@@ -207,7 +226,7 @@ import {
   addDoc as _addDoc, serverTimestamp as _serverTimestamp
 } from 'firebase/firestore';
 
-// Créer une session (écriture côté UI réservée aux admins)
+// CrÃ©er une session (Ã©criture cÃ´tÃ© UI rÃ©servÃ©e aux admins)
 export async function createSession(
   congresId: string,
   data: Omit<Session, 'id' | 'congresId' | 'createdAt' | 'updatedAt'>
@@ -221,7 +240,7 @@ export async function createSession(
   return ref.id;
 }
 
-// ==== Présentation : index auto ====
+// ==== PrÃ©sentation : index auto ====
 import {
    limit as _limit
 } from 'firebase/firestore';
@@ -235,7 +254,7 @@ export async function getNextPresentationIndex(congresId: string, sessionId: str
   return num + 1;
 }
 
-/** Crée une présentation ; si index non fourni, il est auto-calculé */
+/** CrÃ©e une prÃ©sentation ; si index non fourni, il est auto-calculÃ© */
 export async function addPresentation(
   congresId: string,
   sessionId: string,
@@ -257,19 +276,19 @@ import {
   writeBatch as _writeBatch
 } from 'firebase/firestore';
 
-// Mettre à jour une session
+// Mettre Ã  jour une session
 export async function updateSession(
   congresId: string, sessionId: string, patch: Partial<Session>
 ) {
   await _updateDoc(sessionDoc(congresId, sessionId), {
     ...patch,
-    updatedAt: _serverTimestamp?.() // si tu as déjà importé serverTimestamp
+    updatedAt: _serverTimestamp?.() // si tu as dÃ©jÃ  importÃ© serverTimestamp
   } as any);
 }
 
-// Supprimer une session + ses présentations (cascade côté client)
+// Supprimer une session + ses prÃ©sentations (cascade cÃ´tÃ© client)
 export async function deleteSessionCascade(congresId: string, sessionId: string) {
-  // Récupère toutes les présentations, supprime-les par batch, puis la session
+  // RÃ©cupÃ¨re toutes les prÃ©sentations, supprime-les par batch, puis la session
   const presSnap = await _getDocs(_query(presentationsCol(congresId, sessionId)));
   const batch = _writeBatch(db);
   presSnap.forEach(d => batch.delete(d.ref));
@@ -277,7 +296,7 @@ export async function deleteSessionCascade(congresId: string, sessionId: string)
   await batch.commit();
 }
 
-// Mettre à jour une présentation
+// Mettre Ã  jour une prÃ©sentation
 export async function updatePresentation(
   congresId: string, sessionId: string, presId: string, patch: Partial<Presentation>
 ) {
@@ -287,7 +306,7 @@ export async function updatePresentation(
   } as any);
 }
 
-// Supprimer une présentation
+// Supprimer une prÃ©sentation
 export async function deletePresentation(congresId: string, sessionId: string, presId: string) {
   await _deleteDoc(presentationDoc(congresId, sessionId, presId));
 }
@@ -305,7 +324,7 @@ export async function countSessions(congresId: string): Promise<number> {
 
 /** # participants dans congres/{id}/participants */
 export async function countParticipants(congresId: string): Promise<number> {
-  const col = collection(db, 'congres', congresId, 'participants'); // tu as déjà importé 'collection' en haut
+  const col = collection(db, 'congres', congresId, 'participants'); // tu as dÃ©jÃ  importÃ© 'collection' en haut
   const snap = await _getCountFromServer(col);
   return snap.data().count;
 }
@@ -316,7 +335,7 @@ export async function countSponsors(): Promise<number> {
   return snap.data().count;
 }
 
-/** # présentations pour un congrès (somme sur toutes les sessions) */
+/** # prÃ©sentations pour un congrÃ¨s (somme sur toutes les sessions) */
 export async function countPresentationsInCongres(congresId: string): Promise<number> {
   const sessionsSnap = await _getDocs(_query(sessionsCol(congresId))); // sans tri pour aller vite
   let total = 0;
@@ -328,15 +347,13 @@ export async function countPresentationsInCongres(congresId: string): Promise<nu
 }
 
 // ========= SPONSORS =========
-import { deleteDoc } from 'firebase/firestore';
-
 export type Sponsor = {
   id?: string;
   name: string;
   website?: string;
   tier?: 'bronze' | 'silver' | 'gold' | 'platinum' | 'partner';
   description?: string;
-  logoUrl?: string;   // URL de téléchargement
+  logoUrl?: string;   // URL de tÃ©lÃ©chargement
   logoPath?: string;  // chemin Storage pour pouvoir supprimer/remplacer
   createdAt?: any;
   updatedAt?: any;
@@ -350,7 +367,7 @@ export function watchSponsors(cb: (rows: Sponsor[]) => void) {
   );
 }
 
-// Création
+// CrÃ©ation
 export async function createSponsor(data: Omit<Sponsor, 'id' | 'createdAt' | 'updatedAt'>) {
   const ref = await addDoc(sponsorsCol, {
     ...data,
@@ -360,7 +377,7 @@ export async function createSponsor(data: Omit<Sponsor, 'id' | 'createdAt' | 'up
   return ref.id;
 }
 
-// Mise à jour
+// Mise Ã  jour
 export async function updateSponsor(id: string, patch: Partial<Sponsor>) {
   await updateDoc(doc(sponsorsCol, id), { ...patch, updatedAt: serverTimestamp() });
 }
@@ -426,7 +443,7 @@ export async function deleteLink(id: string) {
   await deleteDoc(doc(liensCol, id));
 }
 
-/** Échange les 'order' de deux éléments (pour Up/Down) */
+/** Ã‰change les 'order' de deux Ã©lÃ©ments (pour Up/Down) */
 export async function swapLinkOrder(a: { id: string; order?: number }, b: { id: string; order?: number }) {
   const ao = a.order ?? 0, bo = b.order ?? 0;
   const batch = writeBatch(db);
@@ -440,7 +457,7 @@ export type Personnes = {
   email?: string;
   displayName?: string;
   photoURL?: string;
-  photoPath?: string;   // <— nouveau (chemin Storage de l’avatar)
+  photoPath?: string;   // <â€” nouveau (chemin Storage de lâ€™avatar)
   compagnie?: string;
   updatedAt?: any;
   [k: string]: any;
