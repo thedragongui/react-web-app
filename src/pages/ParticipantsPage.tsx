@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import {
   watchParticipants,
   watchCongres,
@@ -18,6 +18,7 @@ import { DEFAULT_CONGRES_ID } from '../lib/congresId';
 type Row = Participant & { idDoc: string };
 
 const NEW_PARTICIPANT_ID = '__new__';
+const PAGE_SIZE = 25;
 
 type ParticipantFormState = {
   id: string;
@@ -38,6 +39,22 @@ type ActionState = {
   error: string | null;
   success: string | null;
 };
+
+type ParticipantsFilters = {
+  query: string;
+  category: string;
+  onlyAdmins: boolean;
+  onlyScanned: boolean;
+};
+
+const DEFAULT_FILTERS: ParticipantsFilters = {
+  query: '',
+  category: 'ALL',
+  onlyAdmins: false,
+  onlyScanned: false,
+};
+
+const initialActionState: ActionState = { saving: false, deleting: false, error: null, success: null };
 
 function makeEmptyForm(): ParticipantFormState {
   return {
@@ -75,12 +92,7 @@ function buildParticipantPayload(form: ParticipantFormState): Partial<Participan
   return payload;
 }
 
-const initialActionState: ActionState = { saving: false, deleting: false, error: null, success: null };
-
-const PAGE_SIZE = 25;
-
 function displayName(p: Row) {
-  // essaie plusieurs conventions possibles
   const f = (p as any).firstName ?? (p as any).prenom ?? '';
   const l = (p as any).lastName ?? (p as any).nom ?? '';
   const full = `${f} ${l}`.trim();
@@ -97,50 +109,42 @@ function compareById(a: Row, b: Row) {
   return String(a.id ?? a.idDoc).localeCompare(String(b.id ?? b.idDoc));
 }
 
-export default function ParticipantsPage() {
-  const [congresId, setCongresId] = useState(DEFAULT_CONGRES_ID);
+function useDebouncedValue<T>(value: T, delay: number) {
+  const [debounced, setDebounced] = useState(value);
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+
+  return debounced;
+}
+
+function useParticipantsData(congresId: string) {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Filtres
-  const [q, setQ] = useState('');
-  const [debouncedQ, setDebouncedQ] = useState('');
-  const [category, setCategory] = useState<string>('ALL');
-  const [onlyAdmins, setOnlyAdmins] = useState(false);
-  const [onlyScanned, setOnlyScanned] = useState(false);
-
-  // Pagination
-  const [page, setPage] = useState(1);
-
-  // Selection / details
-  const [selectedId, setSelectedId] = useState('');
-  const [congresData, setCongresData] = useState<(Congres & { id: string }) | null>(null);
-  const [congresError, setCongresError] = useState<string | null>(null);
-  const [rootDoc, setRootDoc] = useState<ParticipantRootDoc | null>(null);
-  const [rootSubRows, setRootSubRows] = useState<ParticipantRootSubRow[]>([]);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState<string | null>(null);
-
-  const [formState, setFormState] = useState<ParticipantFormState>(() => makeEmptyForm());
-  const [actionState, setActionState] = useState<ActionState>(initialActionState);
-  const [pendingId, setPendingId] = useState<string | null>(null);
-
   useEffect(() => {
     setLoading(true);
-    const unsub = watchParticipants(congresId, (incoming) => {
+    const unsubscribe = watchParticipants(congresId, (incoming) => {
       const sorted = [...incoming].sort(compareById);
       setRows(sorted);
       setLoading(false);
-      setPage(1); // reset page quand on change de dataset
     });
-    return () => unsub();
+    return () => unsubscribe();
   }, [congresId]);
+
+  return { rows, loading };
+}
+
+function useCongresDocument(congresId: string) {
+  const [congresData, setCongresData] = useState<(Congres & { id: string }) | null>(null);
+  const [congresError, setCongresError] = useState<string | null>(null);
 
   useEffect(() => {
     setCongresError(null);
     setCongresData(null);
-    const unsub = watchCongres(
+    const unsubscribe = watchCongres(
       congresId,
       (doc) => {
         setCongresData(doc);
@@ -150,48 +154,22 @@ export default function ParticipantsPage() {
       },
     );
     return () => {
-      unsub();
+      unsubscribe();
     };
   }, [congresId]);
 
-  // debounce recherche
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQ(q.trim().toLowerCase()), 250);
-    return () => clearTimeout(t);
-  }, [q]);
+  return { congresData, congresError };
+}
 
-  useEffect(() => {
-    if (selectedId === NEW_PARTICIPANT_ID) return;
-    if (pendingId && selectedId === pendingId && !rows.some(r => r.idDoc === pendingId)) {
-      return;
-    }
-    if (rows.length === 0) {
-      if (selectedId !== '') setSelectedId('');
-      return;
-    }
-    if (!selectedId) {
-      setSelectedId(rows[0].idDoc);
-      return;
-    }
-    if (!rows.some(r => r.idDoc === selectedId)) {
-      setSelectedId(rows[0].idDoc);
-    }
-  }, [rows, selectedId, pendingId]);
-
-  useEffect(() => {
-    if (pendingId && rows.some(r => r.idDoc === pendingId)) {
-      setPendingId(null);
-    }
-  }, [pendingId, rows]);
-
-  const selectedRow = useMemo(() => {
-    if (selectedId === NEW_PARTICIPANT_ID) return null;
-    return rows.find(r => r.idDoc === selectedId) ?? null;
-  }, [rows, selectedId]);
+function useParticipantDetails(congresId: string, selectedRow: Row | null, isCreating: boolean) {
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [rootDoc, setRootDoc] = useState<ParticipantRootDoc | null>(null);
+  const [rootSubRows, setRootSubRows] = useState<ParticipantRootSubRow[]>([]);
 
   useEffect(() => {
     setDetailError(null);
-    if (!selectedRow) {
+    if (isCreating || !selectedRow) {
       setDetailLoading(false);
       setRootDoc(null);
       setRootSubRows([]);
@@ -234,82 +212,574 @@ export default function ParticipantsPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedRow, congresId]);
+  }, [selectedRow, congresId, isCreating]);
 
-  useEffect(() => {
-    setActionState(() => ({ ...initialActionState }));
-    if (selectedId === NEW_PARTICIPANT_ID) {
-      setFormState(makeEmptyForm());
-      return;
-    }
-    if (selectedRow) {
-      setFormState({
-        id: selectedRow.id != null ? String(selectedRow.id) : '',
-        idDoc: selectedRow.idDoc,
-        prenom: selectedRow.prenom ? String(selectedRow.prenom) : '',
-        nom: selectedRow.nom ? String(selectedRow.nom) : '',
-        email: selectedRow.email ?? '',
-        compagnie: selectedRow.compagnie ? String(selectedRow.compagnie) : '',
-        pays: selectedRow.pays ? String(selectedRow.pays) : '',
-        category: selectedRow.category ? String(selectedRow.category) : '',
-        isAdmin: !!selectedRow.isAdmin,
-        alreadyScanned: !!selectedRow.alreadyScanned,
-      });
-    } else {
-      setFormState(makeEmptyForm());
-    }
-  }, [selectedId, selectedRow]);
+  return { detailLoading, detailError, rootDoc, rootSubRows };
+}
 
-  const categories = useMemo(() => {
-    const set = new Set<string>();
-    rows.forEach(r => { if (r.category) set.add(String(r.category)); });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [rows]);
+function collectCategories(rows: Row[]) {
+  const list = new Set<string>();
+  rows.forEach((row) => {
+    if (row.category) {
+      list.add(String(row.category));
+    }
+  });
+  return Array.from(list).sort((a, b) => a.localeCompare(b));
+}
 
-  const filtered = useMemo(() => {
-    let data = rows;
+function filterRows(list: Row[], filters: ParticipantsFilters, debouncedQuery: string) {
+  const { category, onlyAdmins, onlyScanned } = filters;
+  const normalizedQuery = debouncedQuery.trim().toLowerCase();
 
-    if (category !== 'ALL') {
-      data = data.filter(r => String(r.category) === category);
+  return list.filter((row) => {
+    if (category !== 'ALL' && String(row.category) !== category) {
+      return false;
     }
-    if (onlyAdmins) {
-      data = data.filter(r => !!r.isAdmin);
+    if (onlyAdmins && !row.isAdmin) {
+      return false;
     }
-    if (onlyScanned) {
-      data = data.filter(r => !!r.alreadyScanned);
+    if (onlyScanned && !row.alreadyScanned) {
+      return false;
     }
-    if (debouncedQ) {
-      data = data.filter(r => {
-        const hay =
-          `${displayName(r)} ${r.email ?? ''} ${r.compagnie ?? ''} ${r.pays ?? ''} ${r.id ?? ''}`
-            .toLowerCase();
-        return hay.includes(debouncedQ);
-      });
+    if (normalizedQuery) {
+      const haystack = `${displayName(row)} ${row.email ?? ''} ${row.compagnie ?? ''} ${row.pays ?? ''} ${row.id ?? ''}`.toLowerCase();
+      if (!haystack.includes(normalizedQuery)) {
+        return false;
+      }
     }
-    return data;
-  }, [rows, category, onlyAdmins, onlyScanned, debouncedQ]);
+    return true;
+  });
+}
+
+type ParticipantsToolbarProps = {
+  congresId: string;
+  onCongresIdChange: (value: string) => void;
+  filters: ParticipantsFilters;
+  updateFilter: <K extends keyof ParticipantsFilters>(key: K, value: ParticipantsFilters[K]) => void;
+  categories: string[];
+  loading: boolean;
+  total: number;
+  onStartCreate: () => void;
+};
+
+function ParticipantsToolbar({
+  congresId,
+  onCongresIdChange,
+  filters,
+  updateFilter,
+  categories,
+  loading,
+  total,
+  onStartCreate,
+}: ParticipantsToolbarProps) {
+  return (
+    <div className="ppage-toolbar">
+      <label>
+        Congres ID
+        <input value={congresId} onChange={(event) => onCongresIdChange(event.target.value)} />
+      </label>
+
+      <div className="sep" />
+
+      <input
+        className="search"
+        placeholder="Rechercher (nom, email, compagnie, pays, id)."
+        value={filters.query}
+        onChange={(event) => updateFilter('query', event.target.value)}
+      />
+
+      <select value={filters.category} onChange={(event) => updateFilter('category', event.target.value)}>
+        <option value="ALL">Toutes categories</option>
+        {categories.map((value) => (
+          <option key={value} value={value}>{value}</option>
+        ))}
+      </select>
+
+      <label className="chk">
+        <input
+          type="checkbox"
+          checked={filters.onlyAdmins}
+          onChange={(event) => updateFilter('onlyAdmins', event.target.checked)}
+        />
+        Admins seulement
+      </label>
+
+      <label className="chk">
+        <input
+          type="checkbox"
+          checked={filters.onlyScanned}
+          onChange={(event) => updateFilter('onlyScanned', event.target.checked)}
+        />
+        Deja scannes
+      </label>
+
+      <div className="spacer" />
+
+      <button className="btn-primary" type="button" onClick={onStartCreate}>
+        Ajouter un participant
+      </button>
+
+      <div className="count">
+        {loading ? 'Chargement...' : `${total} resultat${total > 1 ? 's' : ''}`}
+      </div>
+    </div>
+  );
+}
+
+type ParticipantsTableProps = {
+  rows: Row[];
+  loading: boolean;
+  selectedId: string;
+  onSelect: (id: string) => void;
+};
+
+function ParticipantsTable({ rows, loading, selectedId, onSelect }: ParticipantsTableProps) {
+  return (
+    <div className="ptable">
+      <div className="thead">
+        <div className="th id">ID</div>
+        <div className="th name">Nom</div>
+        <div className="th email">Email</div>
+        <div className="th comp">Compagnie</div>
+        <div className="th country">Pays</div>
+        <div className="th cat">Categorie</div>
+        <div className="th flag">Admin</div>
+        <div className="th flag">Scanne</div>
+      </div>
+
+      {loading && <div className="tloading">Chargement des participants...</div>}
+
+      {!loading && rows.length === 0 && (
+        <div className="tempty">Aucun participant trouve.</div>
+      )}
+
+      {!loading && rows.length > 0 && (
+        <div className="tbody">
+          {rows.map((row) => (
+            <div
+              key={row.idDoc}
+              className={`tr ${selectedId === row.idDoc ? 'selected' : ''}`}
+              role="button"
+              tabIndex={0}
+              onClick={() => onSelect(row.idDoc)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  onSelect(row.idDoc);
+                }
+              }}
+            >
+              <div className="td id mono">{row.id ?? row.idDoc}</div>
+              <div className="td name">{displayName(row)}</div>
+              <div className="td email">
+                {row.email ? (
+                  <a href={`mailto:${row.email}`} title="Envoyer un email">{row.email}</a>
+                ) : <span className="muted">-</span>}
+              </div>
+              <div className="td comp">{row.compagnie ?? <span className="muted">-</span>}</div>
+              <div className="td country">{row.pays ?? <span className="muted">-</span>}</div>
+              <div className="td cat">{row.category ?? <span className="muted">-</span>}</div>
+              <div className="td flag">{row.isAdmin ? 'Oui' : 'Non'}</div>
+              <div className="td flag">{row.alreadyScanned ? 'Oui' : 'Non'}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type ParticipantsPagerProps = {
+  page: number;
+  pages: number;
+  onChange: (value: number) => void;
+};
+
+function ParticipantsPager({ page, pages, onChange }: ParticipantsPagerProps) {
+  return (
+    <div className="pager">
+      <button
+        className="btn-ghost"
+        disabled={page <= 1}
+        onClick={() => onChange(Math.max(1, page - 1))}
+      >
+        <span aria-hidden="true">&lt; </span>Precedent
+      </button>
+      <div className="page-indicator">
+        Page {page} / {pages}
+      </div>
+      <button
+        className="btn-ghost"
+        disabled={page >= pages}
+        onClick={() => onChange(Math.min(pages, page + 1))}
+      >
+        Suivant <span aria-hidden="true">&gt;</span>
+      </button>
+    </div>
+  );
+}
+
+type ParticipantsSidebarProps = {
+  congresId: string;
+  congresData: (Congres & { id: string }) | null;
+  congresError: string | null;
+  isCreating: boolean;
+  selectedRow: Row | null;
+  participantKey: string;
+  detailLoading: boolean;
+  detailError: string | null;
+  rootDoc: ParticipantRootDoc | null;
+  rootSubRows: ParticipantRootSubRow[];
+  formState: ParticipantFormState;
+  actionState: ActionState;
+  onFieldChange: (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
+  onCheckboxChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onSave: (event: FormEvent<HTMLFormElement>) => void;
+  onDelete: () => void;
+  onCancelCreate: () => void;
+  onStartCreate: () => void;
+};
+
+function ParticipantsSidebar({
+  congresId,
+  congresData,
+  congresError,
+  isCreating,
+  selectedRow,
+  participantKey,
+  detailLoading,
+  detailError,
+  rootDoc,
+  rootSubRows,
+  formState,
+  actionState,
+  onFieldChange,
+  onCheckboxChange,
+  onSave,
+  onDelete,
+  onCancelCreate,
+  onStartCreate,
+}: ParticipantsSidebarProps) {
+  return (
+    <div className="pdetails">
+      <section className="pdetail-card">
+        <div className="pdetail-header">
+          <h3>Document congres/{congresId}</h3>
+          {congresError && <span className="pdetail-badge error">Erreur</span>}
+        </div>
+        {congresError && <div className="pdetail-error">{congresError}</div>}
+        <pre className="json-viewer">
+          {congresData ? JSON.stringify(congresData, null, 2) : 'Aucune donnee'}
+        </pre>
+      </section>
+
+      <section className="pdetail-card">
+        <div className="pdetail-header">
+          <div className="pdetail-header-titles">
+            <h3>{isCreating ? 'Nouveau participant' : 'Participant selectionne'}</h3>
+            <div className="pdetail-badges">
+              {isCreating && <span className="pdetail-badge">Mode creation</span>}
+              {!isCreating && selectedRow && (
+                <span className="pdetail-badge">ID doc: {selectedRow.idDoc}</span>
+              )}
+            </div>
+          </div>
+          {!isCreating && (
+            <button type="button" className="btn-secondary" onClick={onStartCreate}>
+              Nouveau participant
+            </button>
+          )}
+        </div>
+        <form className="participant-form" onSubmit={onSave}>
+          <div className="form-grid">
+            {isCreating && (
+              <label>
+                ID document
+                <input
+                  name="idDoc"
+                  value={formState.idDoc}
+                  onChange={onFieldChange}
+                  placeholder="Laisser vide pour auto"
+                />
+              </label>
+            )}
+            <label>
+              Champ id
+              <input
+                name="id"
+                value={formState.id}
+                onChange={onFieldChange}
+                placeholder="Identifiant visible"
+              />
+            </label>
+            <label>
+              Prenom
+              <input
+                name="prenom"
+                value={formState.prenom}
+                onChange={onFieldChange}
+              />
+            </label>
+            <label>
+              Nom
+              <input
+                name="nom"
+                value={formState.nom}
+                onChange={onFieldChange}
+              />
+            </label>
+            <label>
+              Email
+              <input
+                name="email"
+                type="email"
+                value={formState.email}
+                onChange={onFieldChange}
+              />
+            </label>
+            <label>
+              Compagnie
+              <input
+                name="compagnie"
+                value={formState.compagnie}
+                onChange={onFieldChange}
+              />
+            </label>
+            <label>
+              Pays
+              <input
+                name="pays"
+                value={formState.pays}
+                onChange={onFieldChange}
+              />
+            </label>
+            <label>
+              Categorie
+              <input
+                name="category"
+                value={formState.category}
+                onChange={onFieldChange}
+              />
+            </label>
+          </div>
+
+          <div className="form-checkboxes">
+            <label>
+              <input
+                type="checkbox"
+                name="isAdmin"
+                checked={formState.isAdmin}
+                onChange={onCheckboxChange}
+              />
+              Admin
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                name="alreadyScanned"
+                checked={formState.alreadyScanned}
+                onChange={onCheckboxChange}
+              />
+              Deja scanne
+            </label>
+          </div>
+
+          {actionState.error && <div className="form-alert error">{actionState.error}</div>}
+          {actionState.success && <div className="form-alert success">{actionState.success}</div>}
+
+          <div className="form-actions">
+            <button type="submit" className="btn-primary" disabled={actionState.saving}>
+              {actionState.saving ? 'Enregistrement...' : isCreating ? 'Creer' : 'Enregistrer'}
+            </button>
+            {!isCreating && (
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={onDelete}
+                disabled={actionState.deleting || actionState.saving}
+              >
+                {actionState.deleting ? 'Suppression...' : 'Supprimer'}
+              </button>
+            )}
+            {isCreating && (
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={onCancelCreate}
+                disabled={actionState.saving}
+              >
+                Annuler
+              </button>
+            )}
+          </div>
+        </form>
+        {!isCreating && selectedRow && (
+          <details className="json-details">
+            <summary>Donnees brutes</summary>
+            <pre className="json-viewer">{JSON.stringify(selectedRow, null, 2)}</pre>
+          </details>
+        )}
+        {isCreating && (
+          <div className="pdetail-empty">Remplissez le formulaire puis cliquez sur Creer.</div>
+        )}
+        {!isCreating && !selectedRow && (
+          <div className="pdetail-empty">Selectionnez un participant dans la liste.</div>
+        )}
+      </section>
+
+      <section className="pdetail-card">
+        <div className="pdetail-header">
+          <h3>participants/{participantKey || '...'}</h3>
+          {detailLoading && <span className="pdetail-badge">Chargement...</span>}
+        </div>
+        {detailError && <div className="pdetail-error">{detailError}</div>}
+        {selectedRow ? (
+          <>
+            <div className="pdetail-block">
+              <strong className="pdetail-title">Document racine</strong>
+              {rootDoc ? (
+                <pre className="json-viewer">{JSON.stringify(rootDoc, null, 2)}</pre>
+              ) : (
+                <div className="pdetail-empty">Aucune donnee trouvee.</div>
+              )}
+            </div>
+            <div className="pdetail-block">
+              <strong className="pdetail-title">Sous-collection {congresId}</strong>
+              {rootSubRows.length > 0 ? (
+                <pre className="json-viewer">{JSON.stringify(rootSubRows, null, 2)}</pre>
+              ) : (
+                <div className="pdetail-empty">Aucune donnee trouvee.</div>
+              )}
+            </div>
+          </>
+        ) : isCreating ? (
+          <div className="pdetail-empty">Creez un participant pour afficher ces donnees.</div>
+        ) : (
+          <div className="pdetail-empty">Selectionnez un participant dans la liste.</div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+export default function ParticipantsPage() {
+  const [congresId, setCongresId] = useState(DEFAULT_CONGRES_ID);
+  const { rows, loading } = useParticipantsData(congresId);
+  const { congresData, congresError } = useCongresDocument(congresId);
+
+  const [filters, setFilters] = useState<ParticipantsFilters>(DEFAULT_FILTERS);
+  const [page, setPage] = useState(1);
+  const [selectedId, setSelectedId] = useState('');
+  const [formState, setFormState] = useState<ParticipantFormState>(() => makeEmptyForm());
+  const [actionState, setActionState] = useState<ActionState>(initialActionState);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+
+  const debouncedQuery = useDebouncedValue(filters.query, 250);
+
+  const categories = useMemo(() => collectCategories(rows), [rows]);
+  const filteredRows = useMemo(
+    () => filterRows(rows, filters, debouncedQuery),
+    [rows, filters, debouncedQuery],
+  );
 
   const isCreating = selectedId === NEW_PARTICIPANT_ID;
 
-  const handleFieldChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  useEffect(() => {
+    setPage(1);
+  }, [filters.category, filters.onlyAdmins, filters.onlyScanned, debouncedQuery, congresId]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [filteredRows.length, page]);
+
+  useEffect(() => {
+    if (isCreating) return;
+    if (pendingId && selectedId === pendingId && !rows.some((row) => row.idDoc === pendingId)) {
+      return;
+    }
+    if (rows.length === 0) {
+      if (selectedId !== '') setSelectedId('');
+      return;
+    }
+    if (!selectedId) {
+      setSelectedId(rows[0].idDoc);
+      return;
+    }
+    if (!rows.some((row) => row.idDoc === selectedId)) {
+      setSelectedId(rows[0].idDoc);
+    }
+  }, [rows, selectedId, pendingId, isCreating]);
+
+  useEffect(() => {
+    if (pendingId && rows.some((row) => row.idDoc === pendingId)) {
+      setPendingId(null);
+    }
+  }, [pendingId, rows]);
+
+  useEffect(() => {
+    if (isCreating) {
+      setFormState(makeEmptyForm());
+      setActionState(initialActionState);
+      return;
+    }
+    const current = rows.find((row) => row.idDoc === selectedId);
+    if (!current) {
+      setFormState(makeEmptyForm());
+      setActionState(initialActionState);
+      return;
+    }
+    setFormState({
+      id: current.id != null ? String(current.id) : '',
+      idDoc: current.idDoc,
+      prenom: current.prenom ? String(current.prenom) : '',
+      nom: current.nom ? String(current.nom) : '',
+      email: current.email ?? '',
+      compagnie: current.compagnie ? String(current.compagnie) : '',
+      pays: current.pays ? String(current.pays) : '',
+      category: current.category ? String(current.category) : '',
+      isAdmin: !!current.isAdmin,
+      alreadyScanned: !!current.alreadyScanned,
+    });
+    setActionState(initialActionState);
+  }, [isCreating, rows, selectedId]);
+
+  const selectedRow = useMemo(() => {
+    if (isCreating) return null;
+    return rows.find((row) => row.idDoc === selectedId) ?? null;
+  }, [rows, selectedId, isCreating]);
+
+  const { detailLoading, detailError, rootDoc, rootSubRows } = useParticipantDetails(
+    congresId,
+    selectedRow,
+    isCreating,
+  );
+
+  const updateFilter = useCallback(<K extends keyof ParticipantsFilters>(key: K, value: ParticipantsFilters[K]) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  }, []);
+
+  const handleFieldChange = useCallback((event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = event.target;
-    setFormState(prev => ({
+    setFormState((prev) => ({
       ...prev,
       [name as keyof ParticipantFormState]: value,
     }));
-  };
+  }, []);
 
-  const handleCheckboxChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleCheckboxChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const { name, checked } = event.target;
-    setFormState(prev => ({
+    setFormState((prev) => ({
       ...prev,
       [name as keyof ParticipantFormState]: checked,
     }));
-  };
+  }, []);
 
-  const handleSave = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSave = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setActionState(() => ({ ...initialActionState, saving: true }));
+    setActionState({ ...initialActionState, saving: true });
     try {
       const payload = buildParticipantPayload(formState);
       if (isCreating) {
@@ -318,376 +788,124 @@ export default function ParticipantsPage() {
           payload,
           formState.idDoc.trim() || undefined,
         );
-        setActionState(() => ({ ...initialActionState, success: 'Participant cree avec succes.' }));
+        setActionState({ ...initialActionState, success: 'Participant cree avec succes.' });
         setPendingId(createdId);
         setSelectedId(createdId);
       } else if (selectedRow) {
         await upsertParticipant(congresId.trim(), selectedRow.idDoc, payload);
         setPendingId(null);
-        setActionState(() => ({ ...initialActionState, success: 'Participant mis a jour.' }));
+        setActionState({ ...initialActionState, success: 'Participant mis a jour.' });
       }
     } catch (err: any) {
       setPendingId(null);
-      setActionState(() => ({
+      setActionState({
         ...initialActionState,
         error: err?.message ?? String(err),
-      }));
+      });
     }
-  };
+  }, [congresId, formState, isCreating, selectedRow]);
 
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     if (!selectedRow) return;
     const confirmDelete = window.confirm('Supprimer ce participant ?');
     if (!confirmDelete) return;
-    setActionState(() => ({ ...initialActionState, deleting: true }));
+    setActionState({ ...initialActionState, deleting: true });
     try {
       await deleteParticipant(congresId.trim(), selectedRow.idDoc);
-      setActionState(() => ({ ...initialActionState, success: 'Participant supprime.' }));
+      setActionState({ ...initialActionState, success: 'Participant supprime.' });
       setPendingId(null);
       setSelectedId('');
     } catch (err: any) {
-      setActionState(() => ({
+      setActionState({
         ...initialActionState,
         error: err?.message ?? String(err),
-      }));
+      });
     }
-  };
+  }, [congresId, selectedRow]);
 
-  const handleCancelCreate = () => {
-    setActionState(() => ({ ...initialActionState }));
+  const handleCancelCreate = useCallback(() => {
+    setActionState(initialActionState);
     setPendingId(null);
-    if (rows.length > 0) {
+    if (filteredRows.length > 0) {
+      setSelectedId(filteredRows[0].idDoc);
+    } else if (rows.length > 0) {
       setSelectedId(rows[0].idDoc);
     } else {
       setSelectedId('');
       setFormState(makeEmptyForm());
     }
-  };
+  }, [filteredRows, rows]);
 
-  const handleStartCreate = () => {
-    setActionState(() => ({ ...initialActionState }));
+  const handleStartCreate = useCallback(() => {
+    setActionState(initialActionState);
     setFormState(makeEmptyForm());
     setPendingId(null);
     setSelectedId(NEW_PARTICIPANT_ID);
-  };
+  }, []);
 
-  const total = filtered.length;
+  const handleSelectRow = useCallback((id: string) => {
+    setSelectedId(id);
+    setPendingId(null);
+    setActionState(initialActionState);
+  }, []);
+
+  const total = filteredRows.length;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const pageSafe = Math.min(page, pages);
   const start = (pageSafe - 1) * PAGE_SIZE;
-  const current = filtered.slice(start, start + PAGE_SIZE);
+  const currentRows = filteredRows.slice(start, start + PAGE_SIZE);
   const participantKey = isCreating
     ? 'nouveau'
     : selectedRow ? String(selectedRow.id ?? selectedRow.idDoc) : '';
 
   return (
     <div className="ppage">
-      <div className="ppage-toolbar">
-        <label>
-          Congres ID
-          <input value={congresId} onChange={(e) => setCongresId(e.target.value)} />
-        </label>
-
-        <div className="sep" />
-
-        <input
-          className="search"
-          placeholder="Rechercher (nom, email, compagnie, pays, id)."
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
+      <div className="ppage-main">
+        <ParticipantsToolbar
+          congresId={congresId}
+          onCongresIdChange={setCongresId}
+          filters={filters}
+          updateFilter={updateFilter}
+          categories={categories}
+          loading={loading}
+          total={total}
+          onStartCreate={handleStartCreate}
         />
 
-        <select value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option value="ALL">Toutes categories</option>
-          {categories.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
+        <ParticipantsTable
+          rows={currentRows}
+          loading={loading}
+          selectedId={selectedId}
+          onSelect={handleSelectRow}
+        />
 
-        <label className="chk">
-          <input type="checkbox" checked={onlyAdmins} onChange={e => setOnlyAdmins(e.target.checked)} />
-          Admins seulement
-        </label>
-
-        <label className="chk">
-          <input type="checkbox" checked={onlyScanned} onChange={e => setOnlyScanned(e.target.checked)} />
-          Deja scannes
-        </label>
-
-        <div className="spacer" />
-
-        <button
-          className="btn-primary"
-          type="button"
-          onClick={handleStartCreate}
-        >
-          Ajouter un participant
-        </button>
-
-        <div className="count">
-          {loading ? 'Chargement...' : `${total} resultat${total > 1 ? 's' : ''}`}
-        </div>
+        <ParticipantsPager
+          page={pageSafe}
+          pages={pages}
+          onChange={setPage}
+        />
       </div>
 
-      <div className="ptable">
-        <div className="thead">
-          <div className="th id">ID</div>
-          <div className="th name">Nom</div>
-          <div className="th email">Email</div>
-          <div className="th comp">Compagnie</div>
-          <div className="th country">Pays</div>
-          <div className="th cat">Categorie</div>
-          <div className="th flag">Admin</div>
-          <div className="th flag">Scanne</div>
-        </div>
-
-        {loading && <div className="tloading">Chargement des participants...</div>}
-
-        {!loading && current.length === 0 && (
-          <div className="tempty">Aucun participant trouve.</div>
-        )}
-
-        {!loading && current.length > 0 && (
-          <div className="tbody">
-            {current.map((r) => (
-              <div
-                key={r.idDoc}
-                className={`tr ${selectedId === r.idDoc ? 'selected' : ''}`}
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelectedId(r.idDoc)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    setSelectedId(r.idDoc);
-                  }
-                }}
-              >
-                <div className="td id mono">{r.id ?? r.idDoc}</div>
-                <div className="td name">{displayName(r)}</div>
-                <div className="td email">
-                  {r.email ? (
-                    <a href={`mailto:${r.email}`} title="Envoyer un email">{r.email}</a>
-                  ) : <span className="muted">-</span>}
-                </div>
-                <div className="td comp">{r.compagnie ?? <span className="muted">-</span>}</div>
-                <div className="td country">{r.pays ?? <span className="muted">-</span>}</div>
-                <div className="td cat">{r.category ?? <span className="muted">-</span>}</div>
-                <div className="td flag">{r.isAdmin ? 'Oui' : 'Non'}</div>
-                <div className="td flag">{r.alreadyScanned ? 'Oui' : 'Non'}</div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="pager">
-        <button
-          className="btn-ghost"
-          disabled={pageSafe <= 1}
-          onClick={() => setPage(p => Math.max(1, p - 1))}
-        >
-          <span aria-hidden="true">&lt; </span>Precedent
-        </button>
-        <div className="page-indicator">
-          Page {pageSafe} / {pages}
-        </div>
-        <button
-          className="btn-ghost"
-          disabled={pageSafe >= pages}
-          onClick={() => setPage(p => Math.min(pages, p + 1))}
-        >
-          Suivant <span aria-hidden="true">&gt;</span>
-        </button>
-      </div>
-
-      <div className="pdetails">
-        <section className="pdetail-card">
-          <div className="pdetail-header">
-            <h3>Document congres/{congresId}</h3>
-            {congresError && <span className="pdetail-badge error">Erreur</span>}
-          </div>
-          {congresError && <div className="pdetail-error">{congresError}</div>}
-          <pre className="json-viewer">
-            {congresData ? JSON.stringify(congresData, null, 2) : 'Aucune donnee'}
-          </pre>
-        </section>
-
-        <section className="pdetail-card">
-          <div className="pdetail-header">
-            <h3>{isCreating ? 'Nouveau participant' : 'Participant selectionne'}</h3>
-            {isCreating && <span className="pdetail-badge">Mode creation</span>}
-            {!isCreating && selectedRow && (
-              <span className="pdetail-badge">ID doc: {selectedRow.idDoc}</span>
-            )}
-          </div>
-          <form className="participant-form" onSubmit={handleSave}>
-            <div className="form-grid">
-              {isCreating && (
-                <label>
-                  ID document
-                  <input
-                    name="idDoc"
-                    value={formState.idDoc}
-                    onChange={handleFieldChange}
-                    placeholder="Laisser vide pour auto"
-                  />
-                </label>
-              )}
-              <label>
-                Champ id
-                <input
-                  name="id"
-                  value={formState.id}
-                  onChange={handleFieldChange}
-                  placeholder="Identifiant visible"
-                />
-              </label>
-              <label>
-                Prenom
-                <input
-                  name="prenom"
-                  value={formState.prenom}
-                  onChange={handleFieldChange}
-                />
-              </label>
-              <label>
-                Nom
-                <input
-                  name="nom"
-                  value={formState.nom}
-                  onChange={handleFieldChange}
-                />
-              </label>
-              <label>
-                Email
-                <input
-                  name="email"
-                  type="email"
-                  value={formState.email}
-                  onChange={handleFieldChange}
-                />
-              </label>
-              <label>
-                Compagnie
-                <input
-                  name="compagnie"
-                  value={formState.compagnie}
-                  onChange={handleFieldChange}
-                />
-              </label>
-              <label>
-                Pays
-                <input
-                  name="pays"
-                  value={formState.pays}
-                  onChange={handleFieldChange}
-                />
-              </label>
-              <label>
-                Categorie
-                <input
-                  name="category"
-                  value={formState.category}
-                  onChange={handleFieldChange}
-                />
-              </label>
-            </div>
-
-            <div className="form-checkboxes">
-              <label>
-                <input
-                  type="checkbox"
-                  name="isAdmin"
-                  checked={formState.isAdmin}
-                  onChange={handleCheckboxChange}
-                />
-                Admin
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  name="alreadyScanned"
-                  checked={formState.alreadyScanned}
-                  onChange={handleCheckboxChange}
-                />
-                Deja scanne
-              </label>
-            </div>
-
-            {actionState.error && <div className="form-alert error">{actionState.error}</div>}
-            {actionState.success && <div className="form-alert success">{actionState.success}</div>}
-
-            <div className="form-actions">
-              <button type="submit" className="btn-primary" disabled={actionState.saving}>
-                {actionState.saving ? 'Enregistrement...' : isCreating ? 'Creer' : 'Enregistrer'}
-              </button>
-              {!isCreating && (
-                <button
-                  type="button"
-                  className="btn-danger"
-                  onClick={handleDelete}
-                  disabled={actionState.deleting || actionState.saving}
-                >
-                  {actionState.deleting ? 'Suppression...' : 'Supprimer'}
-                </button>
-              )}
-              {isCreating && (
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  onClick={handleCancelCreate}
-                  disabled={actionState.saving}
-                >
-                  Annuler
-                </button>
-              )}
-            </div>
-          </form>
-          {!isCreating && selectedRow && (
-            <details className="json-details">
-              <summary>Donnees brutes</summary>
-              <pre className="json-viewer">{JSON.stringify(selectedRow, null, 2)}</pre>
-            </details>
-          )}
-          {isCreating && (
-            <div className="pdetail-empty">Remplissez le formulaire puis cliquez sur Creer.</div>
-          )}
-          {!isCreating && !selectedRow && (
-            <div className="pdetail-empty">Selectionnez un participant dans la liste.</div>
-          )}
-        </section>
-
-        <section className="pdetail-card">
-          <div className="pdetail-header">
-            <h3>participants/{participantKey || '...'}</h3>
-            {detailLoading && <span className="pdetail-badge">Chargement...</span>}
-          </div>
-          {detailError && <div className="pdetail-error">{detailError}</div>}
-          {selectedRow ? (
-            <>
-              <div className="pdetail-block">
-                <strong className="pdetail-title">Document racine</strong>
-                {rootDoc ? (
-                  <pre className="json-viewer">{JSON.stringify(rootDoc, null, 2)}</pre>
-                ) : (
-                  <div className="pdetail-empty">Aucune donnee trouvee.</div>
-                )}
-              </div>
-              <div className="pdetail-block">
-                <strong className="pdetail-title">Sous-collection {congresId}</strong>
-                {rootSubRows.length > 0 ? (
-                  <pre className="json-viewer">{JSON.stringify(rootSubRows, null, 2)}</pre>
-                ) : (
-                  <div className="pdetail-empty">Aucune donnee trouvee.</div>
-                )}
-              </div>
-            </>
-          ) : isCreating ? (
-            <div className="pdetail-empty">Creez un participant pour afficher ces donnees.</div>
-          ) : (
-            <div className="pdetail-empty">Selectionnez un participant dans la liste.</div>
-          )}
-        </section>
-      </div>
+      <ParticipantsSidebar
+        congresId={congresId}
+        congresData={congresData}
+        congresError={congresError}
+        isCreating={isCreating}
+        selectedRow={selectedRow}
+        participantKey={participantKey}
+        detailLoading={detailLoading}
+        detailError={detailError}
+        rootDoc={rootDoc}
+        rootSubRows={rootSubRows}
+        formState={formState}
+        actionState={actionState}
+        onFieldChange={handleFieldChange}
+        onCheckboxChange={handleCheckboxChange}
+        onSave={handleSave}
+        onDelete={handleDelete}
+        onCancelCreate={handleCancelCreate}
+        onStartCreate={handleStartCreate}
+      />
     </div>
   );
 }

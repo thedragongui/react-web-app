@@ -1,9 +1,20 @@
-﻿.ppage {
+.ppage {
   display: grid;
   gap: 24px;
   align-content: flex-start;
 }
+@media (min-width: 1200px) {
+  .ppage {
+    grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr);
+    align-items: flex-start;
+  }
+}
 
+.ppage-main {
+  display: grid;
+  gap: 24px;
+  align-content: flex-start;
+}
 .ppage-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -187,10 +198,20 @@
 .pdetails {
   display: grid;
   gap: 20px;
+  align-self: start;
 }
 @media (min-width: 960px) {
   .pdetails {
     grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  }
+}
+
+@media (min-width: 1200px) {
+  .pdetails {
+    position: sticky;
+    top: 16px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
   }
 }
 
@@ -209,7 +230,22 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
 }
+.pdetail-header-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.pdetail-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .pdetail-header h3 {
   margin: 0;
   font-size: 15px;
@@ -354,6 +390,30 @@
   align-items: center;
 }
 
+.btn-secondary {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  background: #f9fafb;
+  color: #374151;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #eef2ff;
+  border-color: #6366f1;
+  color: #312e81;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 .btn-primary,
 .btn-danger {
   padding: 8px 14px;
@@ -404,3 +464,26 @@
 .json-details[open] summary {
   font-weight: 600;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
