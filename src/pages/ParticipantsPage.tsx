@@ -464,17 +464,6 @@ function ParticipantsSidebar({
     <div className="pdetails">
       <section className="pdetail-card">
         <div className="pdetail-header">
-          <h3>Document congres/{congresId}</h3>
-          {congresError && <span className="pdetail-badge error">Erreur</span>}
-        </div>
-        {congresError && <div className="pdetail-error">{congresError}</div>}
-        <pre className="json-viewer">
-          {congresData ? JSON.stringify(congresData, null, 2) : 'Aucune donnee'}
-        </pre>
-      </section>
-
-      <section className="pdetail-card">
-        <div className="pdetail-header">
           <div className="pdetail-header-titles">
             <h3>{isCreating ? 'Nouveau participant' : 'Participant selectionne'}</h3>
             <div className="pdetail-badges">
@@ -657,6 +646,17 @@ function ParticipantsSidebar({
         ) : (
           <div className="pdetail-empty">Selectionnez un participant dans la liste.</div>
         )}
+      </section>
+
+      <section className="pdetail-card">
+        <div className="pdetail-header">
+          <h3>Document congres/{congresId}</h3>
+          {congresError && <span className="pdetail-badge error">Erreur</span>}
+        </div>
+        {congresError && <div className="pdetail-error">{congresError}</div>}
+        <pre className="json-viewer">
+          {congresData ? JSON.stringify(congresData, null, 2) : 'Aucune donnee'}
+        </pre>
       </section>
     </div>
   );
