@@ -75,6 +75,32 @@
   font-size: 13px;
 }
 
+.import-report {
+  display: grid;
+  gap: 6px;
+}
+
+.import-errors {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: #b91c1c;
+  font-size: 12px;
+}
+
+.import-errors li + li {
+  margin-top: 2px;
+}
+
+.import-report details {
+  margin-top: 4px;
+}
+
+.import-report summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #4338ca;
+}
+
 @media (max-width: 680px) {
   .ppage-toolbar {
     align-items: stretch;

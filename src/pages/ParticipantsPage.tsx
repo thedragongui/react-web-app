@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import * as XLSX from 'xlsx';
 import {
   watchParticipants,
   watchCongres,
@@ -55,6 +56,129 @@ const DEFAULT_FILTERS: ParticipantsFilters = {
 };
 
 const initialActionState: ActionState = { saving: false, deleting: false, error: null, success: null };
+
+type ImportFailure = {
+  rowNumber: number;
+  message: string;
+};
+
+type ImportReport = {
+  total: number;
+  success: number;
+  failures: ImportFailure[];
+};
+
+type ImportState = {
+  processing: boolean;
+  report: ImportReport | null;
+  error: string | null;
+};
+
+type ParsedRow =
+  | { skip: true }
+  | {
+      skip: false;
+      form: ParticipantFormState;
+      idDoc?: string;
+    }
+  | { skip: false; error: string };
+
+const BOOLEAN_TRUE_VALUES = new Set(['1', 'true', 'oui', 'yes', 'vrai', 'y', 'o']);
+const BOOLEAN_FALSE_VALUES = new Set(['0', 'false', 'non', 'no', 'faux', 'n']);
+
+const COLUMN_ALIASES: Record<
+  keyof ParticipantFormState,
+  string[]
+> = {
+  id: ['id', 'identifiant', 'numero', 'numéro', 'participantid'],
+  idDoc: ['iddoc', 'docid', 'document', 'documentid', 'doc'],
+  prenom: ['prenom', 'prénom', 'firstname', 'first_name', 'first'],
+  nom: ['nom', 'lastname', 'last_name', 'name', 'surname'],
+  email: ['email', 'mail', 'courriel'],
+  compagnie: ['compagnie', 'entreprise', 'company', 'societe', 'société', 'organisation'],
+  pays: ['pays', 'country'],
+  category: ['categorie', 'catégorie', 'category', 'type'],
+  isAdmin: ['admin', 'isadmin', 'roleadmin', 'estadmin'],
+  alreadyScanned: ['deja scanne', 'deja_scanné', 'dejascanné', 'dejascanne', 'alreadyScanned', 'scanne', 'scanned', 'scan'],
+};
+
+function normalizeKey(key: string) {
+  return String(key)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toLowerCase();
+}
+
+function buildRowLookup(row: Record<string, unknown>) {
+  const map = new Map<string, unknown>();
+  for (const [key, value] of Object.entries(row)) {
+    if (value == null || (typeof value === 'string' && value.trim() === '')) {
+      continue;
+    }
+    const normalized = normalizeKey(key);
+    if (!normalized) continue;
+    map.set(normalized, value);
+  }
+  return map;
+}
+
+function pickValue(row: Map<string, unknown>, aliases: string[]): unknown {
+  for (const alias of aliases) {
+    const normalized = normalizeKey(alias);
+    if (row.has(normalized)) {
+      return row.get(normalized);
+    }
+  }
+  return undefined;
+}
+
+function toStringValue(value: unknown): string {
+  if (value == null) return '';
+  return String(value).trim();
+}
+
+function toBooleanValue(value: unknown): boolean | undefined {
+  if (value == null) return undefined;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === '') return undefined;
+  if (BOOLEAN_TRUE_VALUES.has(normalized)) return true;
+  if (BOOLEAN_FALSE_VALUES.has(normalized)) return false;
+  return undefined;
+}
+
+function parseParticipantRow(row: Record<string, unknown>): ParsedRow {
+  const rowValues = Object.values(row);
+  if (rowValues.every(value => value == null || String(value).trim() === '')) {
+    return { skip: true };
+  }
+  const lookup = buildRowLookup(row);
+  const form: ParticipantFormState = {
+    id: toStringValue(pickValue(lookup, COLUMN_ALIASES.id)),
+    idDoc: toStringValue(pickValue(lookup, COLUMN_ALIASES.idDoc)),
+    prenom: toStringValue(pickValue(lookup, COLUMN_ALIASES.prenom)),
+    nom: toStringValue(pickValue(lookup, COLUMN_ALIASES.nom)),
+    email: toStringValue(pickValue(lookup, COLUMN_ALIASES.email)),
+    compagnie: toStringValue(pickValue(lookup, COLUMN_ALIASES.compagnie)),
+    pays: toStringValue(pickValue(lookup, COLUMN_ALIASES.pays)),
+    category: toStringValue(pickValue(lookup, COLUMN_ALIASES.category)),
+    isAdmin: toBooleanValue(pickValue(lookup, COLUMN_ALIASES.isAdmin)) ?? false,
+    alreadyScanned: toBooleanValue(pickValue(lookup, COLUMN_ALIASES.alreadyScanned)) ?? false,
+  };
+
+  const hasCoreInfo = form.prenom !== '' || form.nom !== '' || form.email !== '';
+  if (!hasCoreInfo) {
+    return { skip: false, error: 'Ligne sans prénom, nom ni email' };
+  }
+
+  return {
+    skip: false,
+    form,
+    idDoc: form.idDoc ? form.idDoc : undefined,
+  };
+}
 
 function makeEmptyForm(): ParticipantFormState {
   return {
@@ -260,6 +384,8 @@ type ParticipantsToolbarProps = {
   loading: boolean;
   total: number;
   onStartCreate: () => void;
+  onImportExcel: () => void;
+  importing: boolean;
 };
 
 function ParticipantsToolbar({
@@ -271,6 +397,8 @@ function ParticipantsToolbar({
   loading,
   total,
   onStartCreate,
+  onImportExcel,
+  importing,
 }: ParticipantsToolbarProps) {
   return (
     <div className="ppage-toolbar">
@@ -317,6 +445,14 @@ function ParticipantsToolbar({
 
       <button className="btn-primary" type="button" onClick={onStartCreate}>
         Ajouter un participant
+      </button>
+      <button
+        className="btn-secondary"
+        type="button"
+        onClick={onImportExcel}
+        disabled={importing}
+      >
+        {importing ? 'Importation...' : 'Importer Excel'}
       </button>
 
       <div className="count">
@@ -673,6 +809,13 @@ export default function ParticipantsPage() {
   const [formState, setFormState] = useState<ParticipantFormState>(() => makeEmptyForm());
   const [actionState, setActionState] = useState<ActionState>(initialActionState);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [importState, setImportState] = useState<ImportState>({
+    processing: false,
+    report: null,
+    error: null,
+  });
+
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const debouncedQuery = useDebouncedValue(filters.query, 250);
 
@@ -849,6 +992,90 @@ export default function ParticipantsPage() {
     setActionState(initialActionState);
   }, []);
 
+  const handleImportClick = useCallback(() => {
+    if (importState.processing) return;
+    importInputRef.current?.click();
+  }, [importState.processing, importInputRef]);
+
+  const handleImportFileChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setImportState({ processing: true, report: null, error: null });
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      if (!sheetName) {
+        throw new Error('Le fichier ne contient aucune feuille.');
+      }
+      const sheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+      if (rows.length === 0) {
+        throw new Error('La feuille sélectionnée est vide.');
+      }
+      let success = 0;
+      let total = 0;
+      const failures: ImportFailure[] = [];
+      let lastCreatedId: string | null = null;
+
+      for (let index = 0; index < rows.length; index += 1) {
+        const parsed = parseParticipantRow(rows[index]);
+        if (parsed.skip) continue;
+        if ('error' in parsed) {
+          total += 1;
+          failures.push({
+            rowNumber: index + 2,
+            message: parsed.error,
+          });
+          continue;
+        }
+
+        const { form, idDoc } = parsed;
+        total += 1;
+        try {
+          const payload = buildParticipantPayload(form);
+          const createdId = await createParticipant(congresId.trim(), payload, idDoc);
+          lastCreatedId = createdId;
+          success += 1;
+        } catch (error: any) {
+          failures.push({
+            rowNumber: index + 2,
+            message: error?.message ?? String(error),
+          });
+        }
+      }
+
+      if (total === 0) {
+        throw new Error('Aucune donnée exploitable trouvée dans le fichier.');
+      }
+
+      if (lastCreatedId) {
+        setPendingId(lastCreatedId);
+        setSelectedId(lastCreatedId);
+      }
+
+      setImportState({
+        processing: false,
+        report: {
+          total,
+          success,
+          failures,
+        },
+        error: null,
+      });
+    } catch (error: any) {
+      setImportState({
+        processing: false,
+        report: null,
+        error: error?.message ?? String(error),
+      });
+    } finally {
+      if (event.target) {
+        event.target.value = '';
+      }
+    }
+  }, [congresId, setPendingId, setSelectedId]);
+
   const total = filteredRows.length;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const pageSafe = Math.min(page, pages);
@@ -860,6 +1087,13 @@ export default function ParticipantsPage() {
 
   return (
     <div className="ppage">
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".xlsx,.xls,.csv"
+        style={{ display: 'none' }}
+        onChange={handleImportFileChange}
+      />
       <div className="ppage-main">
         <ParticipantsToolbar
           congresId={congresId}
@@ -870,7 +1104,35 @@ export default function ParticipantsPage() {
           loading={loading}
           total={total}
           onStartCreate={handleStartCreate}
+          onImportExcel={handleImportClick}
+          importing={importState.processing}
         />
+
+        {importState.error && (
+          <div className="form-alert error">{importState.error}</div>
+        )}
+        {importState.report && (
+          <div className="form-alert success">
+            <div className="import-report">
+              <span>
+                Importation terminée&nbsp;: {importState.report.success} sur {importState.report.total}{' '}
+                ligne{importState.report.total !== 1 ? 's' : ''} importée{importState.report.success !== 1 ? 's' : ''}.
+              </span>
+              {importState.report.failures.length > 0 && (
+                <details>
+                  <summary>{importState.report.failures.length} ligne{importState.report.failures.length > 1 ? 's' : ''} en erreur</summary>
+                  <ul className="import-errors">
+                    {importState.report.failures.map(failure => (
+                      <li key={failure.rowNumber}>
+                        Ligne {failure.rowNumber} : {failure.message}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+          </div>
+        )}
 
         <ParticipantsTable
           rows={currentRows}

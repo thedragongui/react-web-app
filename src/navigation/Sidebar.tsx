@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
+import logoAntCongres from '../assets/logo-ant-congres.png';
 import './sidebar.css';
 
 const navItems = [
@@ -18,7 +19,11 @@ const navItems = [
 export default function Sidebar() {
   return (
     <aside className="sidebar">
-      <div className="sidebar-header"><div className="logo">LOGO</div></div>
+      <div className="sidebar-header">
+        <div className="logo">
+          <img src={logoAntCongres} alt="Logo Ant Congres" />
+        </div>
+      </div>
       <nav className="sidebar-nav">
         {navItems.map(item => (
           <NavLink
