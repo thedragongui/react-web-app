@@ -5,9 +5,16 @@ import { useCongresId } from '../lib/congresId';
 import {
   watchAppConfig,
   saveAppConfig,
+  watchNotifications,
+  createNotification,
+  updateNotification,
+  markNotificationStatus,
+  removeNotification,
   type AppConfig,
   type AppIdentity,
   type AppStoreInfo,
+  type AppNotification,
+  type NotificationStatus,
 } from '../firestore/firestoreApi';
 import { storage } from '../firebase';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
@@ -89,7 +96,427 @@ function UploadTile({ title, helper, note, preview, optional, onPick, disabled }
   );
 }
 
-type StepId = 'identity' | 'store' | 'features';
+type NotificationRow = AppNotification & { id: string };
+type NotificationFormState = {
+  id: string | null;
+  title: string;
+  scheduledDate: string;
+  scheduledTime: string;
+  message: string;
+  status: NotificationStatus;
+};
+type FeedbackState = { type: 'success' | 'error'; message: string } | null;
+
+const STATUS_LABELS: Record<NotificationStatus, string> = {
+  scheduled: 'Programmé',
+  sent: 'Envoyé',
+  deleted: 'Supprimé',
+};
+const STATUS_VARIANTS: Record<NotificationStatus, string> = {
+  scheduled: 'scheduled',
+  sent: 'sent',
+  deleted: 'deleted',
+};
+const STATUS_FALLBACK: NotificationStatus = 'scheduled';
+
+function pad2(value: number) {
+  return value.toString().padStart(2, '0');
+}
+
+function ensureDate(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value === 'number') {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const date = new Date(trimmed);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  if (typeof (value as any)?.toDate === 'function') {
+    const date = (value as any).toDate();
+    return date instanceof Date && !Number.isNaN(date.getTime()) ? date : null;
+  }
+  return null;
+}
+
+function formatInputDate(date: Date): string {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+function formatInputTime(date: Date): string {
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+function formatDayLabel(date: Date): string {
+  const day = pad2(date.getDate());
+  const monthLabel = date.toLocaleString('fr-FR', { month: 'short' }).replace('.', '').toLowerCase();
+  return `${day}-${monthLabel}`;
+}
+
+function defaultNotificationDate(): Date {
+  const base = new Date();
+  base.setSeconds(0, 0);
+  base.setMinutes(0);
+  base.setHours(base.getHours() + 1);
+  return base;
+}
+
+function createEmptyNotificationForm(): NotificationFormState {
+  const target = defaultNotificationDate();
+  return {
+    id: null,
+    title: '',
+    scheduledDate: formatInputDate(target),
+    scheduledTime: formatInputTime(target),
+    message: '',
+    status: STATUS_FALLBACK,
+  };
+}
+
+function mapNotificationToForm(row: NotificationRow): NotificationFormState {
+  const scheduledDate = row.scheduledDate;
+  const scheduledTime = row.scheduledTime;
+  const referenceDate =
+    (scheduledDate && ensureDate(scheduledDate)) ||
+    ensureDate(row.scheduledAt) ||
+    ensureDate(row.createdAt) ||
+    defaultNotificationDate();
+
+  return {
+    id: row.id,
+    title: row.title ?? '',
+    scheduledDate: scheduledDate ?? formatInputDate(referenceDate),
+    scheduledTime: scheduledTime ?? formatInputTime(referenceDate),
+    message: row.message ?? '',
+    status: row.status ?? STATUS_FALLBACK,
+  };
+}
+
+function getRowDay(row: NotificationRow): string {
+  if (row.scheduledDate) {
+    const parsed = ensureDate(row.scheduledDate);
+    return parsed ? formatDayLabel(parsed) : row.scheduledDate;
+  }
+  const date = ensureDate(row.scheduledAt) || ensureDate(row.createdAt);
+  return date ? formatDayLabel(date) : '—';
+}
+
+function getRowTime(row: NotificationRow): string {
+  if (row.scheduledTime) {
+    return row.scheduledTime.length > 5 ? row.scheduledTime.slice(0, 5) : row.scheduledTime;
+  }
+  const date = ensureDate(row.scheduledAt);
+  if (!date) return '—';
+  return formatInputTime(date);
+}
+
+type NotificationsPanelProps = {
+  congresId: string;
+  isAdmin: boolean;
+  onBack: () => void;
+  onNext?: () => void;
+};
+
+function NotificationsPanel({ congresId, isAdmin, onBack, onNext }: NotificationsPanelProps) {
+  const [rows, setRows] = useState<NotificationRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<FeedbackState>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState<NotificationFormState>(() => createEmptyNotificationForm());
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    const unsubscribe = watchNotifications(
+      congresId,
+      (incoming) => {
+        setRows(incoming);
+        setLoading(false);
+      },
+      (watchError) => {
+        setError(watchError?.message ?? String(watchError));
+        setLoading(false);
+      },
+    );
+    return () => {
+      unsubscribe();
+      setRows([]);
+    };
+  }, [congresId]);
+
+  function openCreateModal() {
+    setFeedback(null);
+    setForm(createEmptyNotificationForm());
+    setModalOpen(true);
+  }
+
+  function openEditModal(row: NotificationRow) {
+    setFeedback(null);
+    setForm(mapNotificationToForm(row));
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    setModalOpen(false);
+    setSaving(false);
+  }
+
+  function updateField<Key extends keyof NotificationFormState>(key: Key, value: NotificationFormState[Key]) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!isAdmin || saving) return;
+
+    const trimmedTitle = form.title.trim();
+    const trimmedMessage = form.message.trim();
+    if (!trimmedTitle) {
+      setFeedback({ type: 'error', message: 'Le titre est obligatoire.' });
+      return;
+    }
+    if (!trimmedMessage) {
+      setFeedback({ type: 'error', message: 'Le message est obligatoire.' });
+      return;
+    }
+    if (!form.scheduledDate) {
+      setFeedback({ type: 'error', message: "La date d'envoi est requise." });
+      return;
+    }
+    if (!form.scheduledTime) {
+      setFeedback({ type: 'error', message: "L'heure d'envoi est requise." });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload = {
+        title: trimmedTitle,
+        message: trimmedMessage,
+        scheduledDate: form.scheduledDate,
+        scheduledTime: form.scheduledTime,
+        status: form.status,
+      };
+
+      if (form.id) {
+        await updateNotification(congresId, form.id, payload);
+        setFeedback({ type: 'success', message: 'Notification mise à jour.' });
+      } else {
+        await createNotification(congresId, payload);
+        setFeedback({ type: 'success', message: 'Notification créée.' });
+      }
+      closeModal();
+    } catch (submitError: any) {
+      setFeedback({ type: 'error', message: submitError?.message ?? String(submitError) });
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(row: NotificationRow) {
+    if (!isAdmin) return;
+    const alreadyDeleted = (row.status ?? STATUS_FALLBACK) === 'deleted';
+    const question = alreadyDeleted
+      ? 'Supprimer définitivement cette notification ? Cette action est irréversible.'
+      : 'Marquer cette notification comme supprimée ?';
+    if (!window.confirm(question)) return;
+
+    try {
+      if (alreadyDeleted) {
+        await removeNotification(congresId, row.id);
+        setFeedback({ type: 'success', message: 'Notification supprimée définitivement.' });
+      } else {
+        await markNotificationStatus(congresId, row.id, 'deleted');
+        setFeedback({ type: 'success', message: 'Notification marquée comme supprimée.' });
+      }
+    } catch (deleteError: any) {
+      setFeedback({ type: 'error', message: deleteError?.message ?? String(deleteError) });
+    }
+  }
+
+  const isEditing = form.id != null;
+
+  return (
+    <div className="config-card notifications-card">
+      <div className="notifications-header">
+        <div>
+          <h2>Notifications</h2>
+          <p className="notifications-subtitle">Planifiez et suivez les notifications envoyées aux participants.</p>
+        </div>
+        <button
+          type="button"
+          className="btn-primary notifications-add"
+          onClick={openCreateModal}
+          disabled={!isAdmin}
+        >
+          + Ajouter une notification
+        </button>
+      </div>
+
+      {feedback && <div className={`notifications-feedback ${feedback.type}`}>{feedback.message}</div>}
+      {error && <div className="notifications-feedback error">{error}</div>}
+
+      <div className="notifications-table-wrapper">
+        {loading ? (
+          <div className="notifications-empty">Chargement des notifications...</div>
+        ) : rows.length === 0 ? (
+          <div className="notifications-empty">Aucune notification planifiée pour le moment.</div>
+        ) : (
+          <table className="notifications-table">
+            <thead>
+              <tr>
+                <th>Jour</th>
+                <th>Heure</th>
+                <th>Titre</th>
+                <th>Message</th>
+                <th>Statut</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const status = row.status ?? STATUS_FALLBACK;
+                return (
+                  <tr key={row.id} className={status === 'deleted' ? 'is-deleted' : ''}>
+                    <td>{getRowDay(row)}</td>
+                    <td>{getRowTime(row)}</td>
+                    <td className="notifications-title-cell">{row.title}</td>
+                    <td className="notifications-message-cell">{row.message}</td>
+                    <td>
+                      <span className={`status-pill ${STATUS_VARIANTS[status]}`}>{STATUS_LABELS[status]}</span>
+                    </td>
+                    <td className="notifications-actions">
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        onClick={() => openEditModal(row)}
+                        disabled={!isAdmin}
+                        title="Modifier la notification"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn danger"
+                        onClick={() => handleDelete(row)}
+                        disabled={!isAdmin}
+                        title={status === 'deleted' ? 'Supprimer définitivement' : 'Supprimer'}
+                      >
+                        🗑️
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="config-footer">
+        <button type="button" className="btn-outline" onClick={onBack}>
+          Retour
+        </button>
+        {onNext && (
+          <button type="button" className="btn-next" onClick={onNext}>
+            Suivant
+          </button>
+        )}
+      </div>
+
+      {modalOpen && (
+        <div
+          className="notifications-modal-backdrop"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              closeModal();
+            }
+          }}
+        >
+          <div className="notifications-modal" role="dialog" aria-modal="true">
+            <header className="notifications-modal-header">
+              <h3>{isEditing ? 'Modifier la notification' : 'Ajouter une notification'}</h3>
+              <button type="button" className="icon-btn" onClick={closeModal} aria-label="Fermer">
+                ×
+              </button>
+            </header>
+            <form className="notifications-form" onSubmit={handleSubmit}>
+              <label className="field-group">
+                <span>Titre</span>
+                <input
+                  value={form.title}
+                  onChange={(event) => updateField('title', event.target.value)}
+                  placeholder="Titre de la notification"
+                />
+              </label>
+
+              <div className="notifications-grid">
+                <label className="field-group">
+                  <span>Date d&apos;envoi</span>
+                  <input
+                    type="date"
+                    value={form.scheduledDate}
+                    onChange={(event) => updateField('scheduledDate', event.target.value)}
+                  />
+                </label>
+                <label className="field-group">
+                  <span>Heure d&apos;envoi</span>
+                  <input
+                    type="time"
+                    value={form.scheduledTime}
+                    onChange={(event) => updateField('scheduledTime', event.target.value)}
+                  />
+                </label>
+              </div>
+
+              <label className="field-group">
+                <span>Message</span>
+                <textarea
+                  rows={4}
+                  value={form.message}
+                  onChange={(event) => updateField('message', event.target.value)}
+                  placeholder="Contenu du message..."
+                />
+              </label>
+
+              {isEditing && (
+                <label className="field-group">
+                  <span>Statut</span>
+                  <select
+                    value={form.status}
+                    onChange={(event) => updateField('status', event.target.value as NotificationStatus)}
+                  >
+                    <option value="scheduled">Programmé</option>
+                    <option value="sent">Envoyé</option>
+                    <option value="deleted">Supprimé</option>
+                  </select>
+                </label>
+              )}
+
+              <div className="notifications-modal-actions">
+                <button type="button" className="btn-outline" onClick={closeModal}>
+                  Annuler
+                </button>
+                <button className="btn-primary" disabled={saving || !isAdmin}>
+                  {saving ? 'Enregistrement...' : 'Enregistrer'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type StepId = 'identity' | 'store' | 'notifications' | 'features';
 
 type Step = {
   id: StepId;
@@ -102,7 +529,8 @@ type Step = {
 const STEPS: Step[] = [
   { id: 'identity', index: 1, label: 'Identite visuelle' },
   { id: 'store', index: 2, label: 'Informations Store' },
-  { id: 'features', index: 3, label: 'Choix des fonctionnalites' },
+  { id: 'notifications', index: 3, label: 'Notifications' },
+  { id: 'features', index: 4, label: 'Choix des fonctionnalites', disabled: true },
 ];
 
 export default function ConfigApp() {
@@ -392,11 +820,20 @@ export default function ConfigApp() {
               <button type="button" className="btn-outline" onClick={() => setTab('identity')}>
                 Retour
               </button>
-              <button type="button" className="btn-next" onClick={() => setTab('features')}>
+              <button type="button" className="btn-next" onClick={() => setTab('notifications')}>
                 Suivant
               </button>
             </div>
           </form>
+        )}
+
+        {tab === 'notifications' && (
+          <NotificationsPanel
+            congresId={congresId}
+            isAdmin={isAdmin}
+            onBack={() => setTab('store')}
+            onNext={() => setTab('features')}
+          />
         )}
 
         {tab === 'features' && (
@@ -404,7 +841,7 @@ export default function ConfigApp() {
             <h2>Choix des fonctionnalites</h2>
             <div className="features-placeholder">En cours de reflexion</div>
             <div className="config-footer">
-              <button type="button" className="btn-outline" onClick={() => setTab('store')}>
+              <button type="button" className="btn-outline" onClick={() => setTab('notifications')}>
                 Retour
               </button>
             </div>

@@ -524,3 +524,110 @@ export function watchAppConfig(
 export async function saveAppConfig(congresId: string, patch: Partial<AppConfig>) {
   await setDoc(appConfigDoc(congresId), { ...patch, updatedAt: serverTimestamp() }, { merge: true });
 }
+
+// ========= NOTIFICATIONS =========
+export type NotificationStatus = 'scheduled' | 'sent' | 'deleted';
+export type AppNotification = {
+  id?: string;
+  title: string;
+  message: string;
+  scheduledDate?: string | null;  // YYYY-MM-DD
+  scheduledTime?: string | null;  // HH:mm
+  scheduledAt?: any;
+  status?: NotificationStatus;
+  createdAt?: any;
+  updatedAt?: any;
+  sentAt?: any;
+};
+
+const notificationsCol = (congresId: string) =>
+  collection(db, 'congres', congresId, 'notifications') as CollectionReference<AppNotification>;
+const notificationDoc = (congresId: string, notificationId: string) =>
+  doc(notificationsCol(congresId), notificationId);
+
+function buildScheduledAt(dateStr?: string | null, timeStr?: string | null) {
+  if (!dateStr || !timeStr) return null;
+  const trimmedDate = dateStr.trim();
+  const trimmedTime = timeStr.trim();
+  if (!trimmedDate || !trimmedTime) return null;
+  const normalizedTime = trimmedTime.length === 5 ? `${trimmedTime}:00` : trimmedTime;
+  const candidate = new Date(`${trimmedDate}T${normalizedTime}`);
+  return Number.isNaN(candidate.getTime()) ? null : candidate;
+}
+
+export function watchNotifications(
+  congresId: string,
+  cb: (rows: Array<AppNotification & { id: string }>) => void,
+  onError?: (e: any) => void,
+) {
+  if (!congresId) { cb([]); return () => {}; }
+  const q = query(
+    notificationsCol(congresId),
+    orderBy('scheduledAt', 'asc'),
+    orderBy('createdAt', 'asc'),
+  );
+  return onSnapshot(q, (snap) => {
+    cb(
+      snap.docs.map((docSnap) => {
+        const data = docSnap.data() as AppNotification;
+        return { id: docSnap.id, ...data };
+      }),
+    );
+  }, (error) => {
+    (onError ?? console.error)('[watchNotifications]', error);
+  });
+}
+
+type WriteableNotification = Omit<AppNotification, 'id' | 'createdAt' | 'updatedAt' | 'scheduledAt' | 'sentAt'> & {
+  status?: NotificationStatus;
+};
+
+export async function createNotification(
+  congresId: string,
+  data: WriteableNotification,
+): Promise<string> {
+  const scheduledAt = buildScheduledAt(data.scheduledDate, data.scheduledTime);
+  const ref = await addDoc(notificationsCol(congresId), {
+    title: data.title,
+    message: data.message,
+    scheduledDate: data.scheduledDate ?? null,
+    scheduledTime: data.scheduledTime ?? null,
+    scheduledAt,
+    status: data.status ?? 'scheduled',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function updateNotification(
+  congresId: string,
+  notificationId: string,
+  patch: Partial<WriteableNotification>,
+) {
+  const payload: Record<string, any> = { ...patch, updatedAt: serverTimestamp() };
+  if ('scheduledDate' in patch || 'scheduledTime' in patch) {
+    const scheduledAt = buildScheduledAt(patch.scheduledDate ?? null, patch.scheduledTime ?? null);
+    payload.scheduledAt = scheduledAt;
+  }
+  await updateDoc(notificationDoc(congresId, notificationId), payload);
+}
+
+export async function markNotificationStatus(
+  congresId: string,
+  notificationId: string,
+  status: NotificationStatus,
+) {
+  const payload: Record<string, any> = {
+    status,
+    updatedAt: serverTimestamp(),
+  };
+  if (status === 'sent') {
+    payload.sentAt = serverTimestamp();
+  }
+  await updateDoc(notificationDoc(congresId, notificationId), payload);
+}
+
+export async function removeNotification(congresId: string, notificationId: string) {
+  await deleteDoc(notificationDoc(congresId, notificationId));
+}
