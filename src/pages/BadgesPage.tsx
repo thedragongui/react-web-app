@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ref, listAll, getMetadata, getDownloadURL, uploadBytes, deleteObject } from 'firebase/storage';
 import { storage } from '../firebase';
 import { useAuth } from '../auth/AuthContext';
+import { formatBytes, isImage, isPdf, sanitizeFileName } from '../lib/files';
 import './badges.css';
 
 type BadgeItem = {
@@ -12,25 +13,6 @@ type BadgeItem = {
   timeCreated: string | null;
   size: number | null;
 };
-
-function sanitizeFileName(name: string) {
-  return name.replace(/[^\w.\-]/g, '_');
-}
-
-function isImage(ct?: string | null) {
-  return !!ct && ct.startsWith('image/');
-}
-
-function isPdf(ct?: string | null) {
-  return ct === 'application/pdf';
-}
-
-function formatBytes(b?: number | null) {
-  if (!b && b !== 0) return '';
-  if (b < 1024) return `${b} o`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} Ko`;
-  return `${(b / 1024 / 1024).toFixed(1)} Mo`;
-}
 
 export default function BadgesPage() {
   const { user, isAdmin } = useAuth();

@@ -73,7 +73,7 @@ export default function AppShell() {
               Erreur de chargement des paramètres du congrès: {err}
             </div>
           )}
-          <ErrorBoundary>
+          <ErrorBoundary key={pathname}>
             <Outlet />
           </ErrorBoundary>
         </div>
