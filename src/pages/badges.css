@@ -1,9 +1,14 @@
-.badges-page { display: grid; gap: 16px; }
+.badges-page { display: flex; flex-direction: column; gap: 16px; }
+.badges-page.admin { display: grid; grid-template-columns: 280px 1fr; gap: 16px; align-items: flex-start; }
+.badges-content { display: flex; flex-direction: column; gap: 16px; }
 .badges-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
 .badges-toolbar .left { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .badges-toolbar input, .badges-toolbar select { padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
-.me { color: #6b7280; font-size: 13px; }
-.search { min-width: 220px; }
+.badges-toolbar select { min-width: 120px; }
+.badges-search { min-width: 220px; }
+.me { color: #6b7280; font-size: 13px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.manual-id { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #6b7280; }
+.manual-id input { min-width: 200px; }
 
 .btn-primary { padding: 10px 12px; border: none; border-radius: 8px; background: #111827; color: #fff; cursor: pointer; }
 .btn-ghost { padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: transparent; cursor: pointer; }
@@ -14,6 +19,55 @@
 .placeholder { color: #6b7280; padding: 12px; }
 .hint { color: #6b7280; font-size: 13px; }
 .error { color: #b91c1c; background: #fee2e2; border: 1px solid #fecaca; padding: 8px 10px; border-radius: 8px; }
+
+.badges-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  max-height: calc(100vh - 160px);
+  position: sticky;
+  top: 96px;
+}
+.sidebar-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sidebar-title { font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.sidebar-count { font-size: 12px; color: #6b7280; }
+.sidebar-search {
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  width: 100%;
+}
+.folder-list { display: grid; gap: 6px; overflow-y: auto; padding-right: 4px; }
+.folder-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: #f9fafb;
+  color: #111827;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.folder-item:hover { background: #eef2ff; }
+.folder-item.active { background: #111827; border-color: #111827; color: #fff; }
+.folder-item.active .badge-self { background: rgba(255,255,255,0.15); color: #fff; }
+.folder-name { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge-self {
+  font-size: 11px;
+  text-transform: uppercase;
+  background: #111827;
+  color: #fff;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
 
 .badges-grid {
   display: grid;
@@ -40,3 +94,10 @@
 .confirm-body { padding: 16px; display: grid; gap: 8px; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #6b7280; }
 .actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+@media (max-width: 960px) {
+  .badges-page.admin { display: flex; flex-direction: column; }
+  .badges-sidebar { position: relative; top: auto; max-height: none; }
+  .manual-id input { width: 100%; min-width: 0; }
+  .badges-search { min-width: 0; width: 100%; }
+}
