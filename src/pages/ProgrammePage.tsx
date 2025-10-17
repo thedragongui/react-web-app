@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useCongresId } from '../lib/congresId';
 import { watchCongres, updateCongres } from '../firestore/firestoreApi';
+import { stripUndefined } from '../lib/stripUndefined';
 import type { ProgrammeItem, ProgrammePresentation, ProgrammeSpeaker } from '../firestore/schema';
 import './programme.css';
 
@@ -266,8 +267,9 @@ export default function ProgrammePage() {
       return;
     }
     try {
-      await updateCongres(congresId, { listProgrammes: nextList });
-      setProgrammes(nextList);
+      const sanitized = stripUndefined(nextList);
+      await updateCongres(congresId, { listProgrammes: sanitized });
+      setProgrammes(sanitized);
       setStatus(message);
       setError(null);
     } catch (err: any) {

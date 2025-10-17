@@ -6,6 +6,7 @@ import { watchCongres, updateCongres, type Congres } from '../firestore/firestor
 import type { SponsorItem } from '../firestore/schema';
 import { storage } from '../firebase';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { stripUndefined } from '../lib/stripUndefined';
 import './sponsors.css';
 
 type SponsorFormValues = {
@@ -34,9 +35,9 @@ function fileExt(file: File) {
   return (match ? match[1] : 'png').toLowerCase();
 }
 
-async function uploadLogoToImgSponsors(file: File, sponsorName: string) {
+async function uploadLogoToSponsorIcons(file: File, sponsorName: string) {
   const ts = Date.now();
-  const path = `imgSponsors/${ts}_${sanitizeFileName(sponsorName || 'sponsor')}.${fileExt(file)}`;
+  const path = `sponsors/icones/${ts}_${sanitizeFileName(sponsorName || 'sponsor')}.${fileExt(file)}`;
   const handle = ref(storage, path);
   const snap = await uploadBytes(handle, file);
   const url = await getDownloadURL(snap.ref);
@@ -131,7 +132,7 @@ function SponsorModal({
       let nextLogoUrl = logoUrl;
       let nextLogoPath = logoPath;
       if (pendingFile) {
-        const uploaded = await uploadLogoToImgSponsors(pendingFile, title);
+        const uploaded = await uploadLogoToSponsorIcons(pendingFile, title);
         nextLogoUrl = uploaded.url;
         if (logoPath && logoPath !== uploaded.path) {
           await deleteLogoAtPath(logoPath);
@@ -236,7 +237,7 @@ function SponsorModal({
                 <input type='file' accept='image/*' hidden onChange={handleFileChange} />
               </label>
             </div>
-            <div className='hint'>Les fichiers sont stockes dans Storage sous imgSponsors/.</div>
+            <div className='hint'>Les fichiers sont stockes dans Storage sous sponsors/icones/.</div>
           </div>
 
           {err && <div className='error'>{err}</div>}
@@ -434,7 +435,9 @@ export default function SponsorsPage() {
     }
 
     try {
-      await updateCongres(congresId, { listSponsors: current });
+      const sanitized = stripUndefined(current);
+      await updateCongres(congresId, { listSponsors: sanitized });
+      setCongres((prev) => (prev ? { ...prev, listSponsors: sanitized } : prev));
       setError(null);
       pushStatus(index != null && index >= 0 ? 'Sponsor mis a jour.' : 'Sponsor ajoute.');
     } catch (err) {
@@ -458,7 +461,9 @@ export default function SponsorsPage() {
     }
     const [removed] = current.splice(item._index, 1);
     try {
-      await updateCongres(congresId, { listSponsors: current });
+      const sanitized = stripUndefined(current);
+      await updateCongres(congresId, { listSponsors: sanitized });
+      setCongres((prev) => (prev ? { ...prev, listSponsors: sanitized } : prev));
       setError(null);
       pushStatus('Sponsor supprime.');
     } catch (err) {
@@ -490,7 +495,9 @@ export default function SponsorsPage() {
     (nextItem as any).showBanner = nextFlag;
     current[item._index] = nextItem;
     try {
-      await updateCongres(congresId, { listSponsors: current });
+      const sanitized = stripUndefined(current);
+      await updateCongres(congresId, { listSponsors: sanitized });
+      setCongres((prev) => (prev ? { ...prev, listSponsors: sanitized } : prev));
       setError(null);
       pushStatus(nextFlag ? 'Sponsor ajoute au bandeau.' : 'Sponsor retire du bandeau.');
     } catch (err) {
