@@ -15,6 +15,8 @@ import {
 } from '../firestore/firestoreApi';
 import './participants.css';
 import { DEFAULT_CONGRES_ID } from '../lib/congresId';
+import { usePageActions } from '../components/PageActionsContext';
+import { PageActionGroup } from '../components/PageActions';
 
 type Row = Participant & { idDoc: string };
 
@@ -802,6 +804,7 @@ export default function ParticipantsPage() {
   const [congresId, setCongresId] = useState(DEFAULT_CONGRES_ID);
   const { rows, loading } = useParticipantsData(congresId);
   const { congresData, congresError } = useCongresDocument(congresId);
+  const { setActions } = usePageActions();
 
   const [filters, setFilters] = useState<ParticipantsFilters>(DEFAULT_FILTERS);
   const [page, setPage] = useState(1);
@@ -826,6 +829,10 @@ export default function ParticipantsPage() {
   );
 
   const isCreating = selectedId === NEW_PARTICIPANT_ID;
+
+  useEffect(() => {
+    return () => setActions(null);
+  }, [setActions]);
 
   useEffect(() => {
     setPage(1);
@@ -996,6 +1003,47 @@ export default function ParticipantsPage() {
     if (importState.processing) return;
     importInputRef.current?.click();
   }, [importState.processing, importInputRef]);
+
+  useEffect(() => {
+    setActions(
+      <PageActionGroup>
+        <button
+          type="button"
+          className="app-header-btn ghost"
+          onClick={handleImportClick}
+          disabled={importState.processing}
+        >
+          Importer
+        </button>
+        {isCreating ? (
+          <button
+            type="button"
+            className="app-header-btn ghost"
+            onClick={handleCancelCreate}
+            disabled={actionState.saving}
+          >
+            Annuler
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="app-header-btn primary"
+            onClick={handleStartCreate}
+          >
+            Nouveau participant
+          </button>
+        )}
+      </PageActionGroup>
+    );
+  }, [
+    setActions,
+    handleImportClick,
+    handleCancelCreate,
+    handleStartCreate,
+    importState.processing,
+    actionState.saving,
+    isCreating,
+  ]);
 
   const handleImportFileChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
